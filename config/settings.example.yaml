@@ -1,0 +1,17 @@
+schedule:
+  time: "20:00"            # local time, HH:MM 24h
+ranking:
+  topN: 10
+search:
+  filters:
+    - keywords: "Software Development Engineer"
+      location: "India"
+      experienceLevel: "mid-senior"
+      datePosted: "past-24h"
+apply:
+  dailyCap: 8
+  easyApplyOnly: true
+llm:
+  model: "claude-sonnet-4-6"
+telegram:
+  chatId: 0                # filled in by the user; token comes from env
