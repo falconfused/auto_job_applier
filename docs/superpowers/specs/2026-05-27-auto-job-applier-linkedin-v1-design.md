@@ -1,7 +1,7 @@
 # Auto Job Applier — LinkedIn v1 Design
 
 **Date:** 2026-05-27
-**Status:** Approved (brainstorming) — pending implementation plan
+**Status:** Approved (brainstorming) — implementation in progress
 **Owner:** Vivek Goswami
 
 ---
@@ -13,7 +13,8 @@ jobs for the user, delivers them to a Telegram bot for approval, and — on appr
 tailors a resume + cover letter per job and submits LinkedIn **Easy Apply**
 applications via an AI browser agent, pausing for a final human confirmation before
 every submit. External (non-Easy-Apply) jobs are forwarded as links for manual
-application. All application activity is recorded in a local tracker.
+application. A read-only **shadcn web dashboard** shows the tracker/history. All
+application activity is recorded in a local SQLite database.
 
 This document covers **v1 only**: LinkedIn, one platform, run locally.
 
@@ -30,17 +31,19 @@ This document covers **v1 only**: LinkedIn, one platform, run locally.
   AI browser agent that pauses at the final submit.
 - For **external** jobs: forward the link for manual application.
 - Track every job through its lifecycle in a local database.
+- Provide a **read-only web dashboard** (shadcn) to view applications, statuses, and runs.
 - Run locally on the user's Mac; remain portable to a cloud VM later.
 
 ### Non-Goals (explicitly out of scope for v1)
 - **Other platforms** (Naukri, Indeed, Instahyre) — later sub-projects.
 - **External-site auto-apply** + account creation — deferred; external jobs are link-only.
 - **Credentials vault** — not needed for a single persistent LinkedIn login. The proven
-  Keychain module from `resume-automation` will be re-introduced when external sites
+  Keychain approach from `resume-automation` will be re-introduced when external sites
   enter scope.
 - **LinkedIn networking / referral connection requests** — parked (highest ban-risk
   vector; deliberately excluded from v1).
-- **Multi-user / web UI** — single user, Telegram-only interface.
+- **Write actions from the web dashboard** — the dashboard is read-only in v1; all
+  approvals happen via Telegram. **No multi-user / auth** (single local user).
 
 ---
 
@@ -51,67 +54,92 @@ This document covers **v1 only**: LinkedIn, one platform, run locally.
 | First platform | **LinkedIn only** | User's choice; widest job pool. Highest automation risk, accepted. |
 | Apply scope | **Easy Apply auto-submit; external = forward link** | Easy Apply is self-contained (no account creation/vault); external needs the vault subsystem, deferred. |
 | Runtime | **Local Mac now, portable to cloud later** | Home IP/browser profile looks natural to LinkedIn → lowest challenge/ban risk. Built portable. |
-| Reuse from `resume-automation` | **Only the tailoring pipeline** (`master_resume.tex` + `tectonic` compile) | The rest is being designed fresh for an autonomous architecture. |
+| Reuse from `resume-automation` | **Only the tailoring pipeline** (`master_resume.tex` + `tectonic` compile) | The rest is being designed fresh. `tectonic` is a CLI, invoked from Node via a child process. |
 | Matching | **Broad config filters → LinkedIn search → LLM ranking → top 10** | Controllable + smart; avoids noise. |
-| Apply engine | **Agentic (Claude Agent SDK + browser tool)** | Easy Apply forms have unpredictable screening questions; deterministic selectors are too brittle. Agent answers from profile and escalates when unsure. |
-| Ingestion source | **Scrape the user's logged-in LinkedIn session** | No usable LinkedIn jobs API exists for individual seekers (see §9). Best coverage + Easy-Apply detection. |
-| Tailoring intelligence | **LLM call (not Claude-in-terminal)** | Must run unattended at 8 PM. The reusable asset is the LaTeX template + `tectonic` compile, not the interactive session. |
-| Storage | **SQLite** | Single-user, local, zero-setup; trivially portable to Postgres later. |
+| Apply engine | **Agentic (Claude Agent SDK, TypeScript)** | Easy Apply forms have unpredictable screening questions; deterministic selectors are too brittle. Agent answers from profile and escalates when unsure. |
+| Ingestion source | **Scrape the user's logged-in LinkedIn session (Playwright/Node)** | No usable LinkedIn jobs API exists for individual seekers (see §9). Best coverage + Easy-Apply detection. |
+| **Tech stack** | **Node.js + TypeScript** | User directive. |
+| **App structure** | **Next.js (App Router) dashboard + shared `lib/` core + standalone Node `worker/`** | shadcn's best-supported setup; the worker is a persistent process (Playwright/bot/scheduler) that can't run as serverless routes. Both share the SQLite DB. |
+| **Frontend** | **shadcn/ui (read-only tracker dashboard)** | User directive. Telegram remains the primary approval interface; the web app only visualizes the tracker/history. |
+| Tailoring/ranking LLM | **Anthropic SDK (configurable model)** | Single provider alongside the Claude Agent SDK apply engine. |
+| Storage | **SQLite (`better-sqlite3`)** | Single-user, local, zero-setup, synchronous & simple; portable to Postgres later. |
+| Tests | **Vitest** | TS-native, fast; fits the Node stack. |
 
 ---
 
 ## 4. Architecture
 
-A single long-running Python service. APScheduler fires the daily pipeline;
-`python-telegram-bot` provides the interactive interface; a persistent Chrome profile
-stays logged into LinkedIn so the session fingerprint never changes.
+A single Next.js (App Router) project with a shared core library and a standalone
+long-running worker. APScheduler-equivalent (`node-cron`) inside the worker fires the
+daily pipeline; `grammy` provides the Telegram interface; a persistent Playwright Chrome
+context stays logged into LinkedIn so the session fingerprint never changes. The Next.js
+app reads the same SQLite DB to render the dashboard.
 
 ```
-auto_job_applier/
-  main.py                    # entrypoint: starts scheduler + Telegram bot, runs forever
+auto_job_applier/                 # Node + TypeScript, single package
+  package.json                    # deps + scripts (dev:web, worker, test)
+  tsconfig.json
+  next.config.mjs                 # Next.js (App Router)
+  tailwind.config.ts              # shadcn/ui + Tailwind
+  components.json                 # shadcn config
+  .env                            # secrets: ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN (gitignored)
   config/
-    settings.yaml            # search filters, schedule time, top-N, daily apply cap, paths
-    profile.json             # ported: personal/form-fill data (name, CTC, notice, locations…)
-  core/
-    scheduler.py             # APScheduler — fires the 8 PM daily pipeline
-    ingest.py                # Playwright: drive logged-in LinkedIn, scrape search results
-    rank.py                  # LLM scores candidates vs resume/profile → top N
-    tailor.py                # LLM: master .tex + JD → tailored .tex + cover letter
-    compile.py               # ported: tectonic .tex → PDF
-    apply_agent.py           # Claude Agent SDK: drives Easy Apply form, pauses at submit
-    tracker.py               # SQLite read/write of application lifecycle
-  bot/
-    telegram_bot.py          # digest, inline Apply/Deny buttons, approval gates, chat edits
-    handlers.py              # button callbacks + text-reply (edit) handlers
+    settings.yaml                 # search filters, schedule, top-N, caps (gitignored)
+    settings.example.yaml         # committed template
+    profile.json                  # ported personal/form-fill data
+  lib/                            # shared core (imported by web + worker)
+    paths.ts                      # path constants
+    config.ts                     # zod-validated Settings + Profile loaders
+    types.ts                      # Posting, ScoredPosting, TailoredDocs
+    db.ts                         # better-sqlite3 connection + migrate()
+    tracker.ts                    # jobs/suggestions/applications/runs CRUD + status transitions
+    llm.ts                        # completeJson(system, user) -> object  (Anthropic seam)
+    compile.ts                    # tectonic .tex -> PDF (via execa)
+    tailor.ts                     # LLM: master .tex + JD -> tailored .tex + cover letter
+    rank.ts                       # LLM: postings + resume/profile -> scored top-N
+  worker/                         # standalone long-running process (run via tsx)
+    index.ts                      # boot: scheduler + Telegram bot
+    scheduler.ts                  # node-cron — fires the 8 PM pipeline
+    ingest.ts                     # Playwright: drive logged-in LinkedIn, scrape results
+    bot.ts                        # grammy: digest, Apply/Deny, gates, chat edits
+    applyAgent.ts                 # Claude Agent SDK: drives Easy Apply, pauses at submit
+  app/                            # Next.js App Router — read-only shadcn dashboard
+    layout.tsx
+    page.tsx                      # tracker table: applications + statuses
+    runs/page.tsx                 # daily run history
+  components/ui/                  # shadcn components
   resume/
-    master_resume.tex        # ported gold-copy master
-    jobs/<slug>/             # per-job: jd.txt, resume.tex/pdf, cover_letter.*, meta
+    master_resume.tex             # ported gold-copy master
+    jobs/<slug>/                  # per-job: jd.txt, resume.tex/pdf, cover_letter.*, meta
   data/
-    applier.db               # SQLite: jobs, suggestions, applications, runs
-  browser_profile/           # persistent Chrome user-data-dir (logged-in LinkedIn)
-  docs/superpowers/specs/    # this spec
+    applier.db                    # SQLite (gitignored)
+  browser_profile/                # persistent Chrome user-data-dir (gitignored)
+  tests/                          # vitest
+  docs/superpowers/{specs,plans}/ # this spec + plans
 ```
 
 ### Units (each independently testable)
 
-| Unit | Input → Output | LLM? | Notes |
-|------|----------------|------|-------|
-| `ingest` | search filters → list of raw postings | No | Pure given HTML; parse-tested against fixtures |
-| `rank` | postings + profile → scored top-N | Yes | Pure function; stubbed LLM in tests |
-| `tailor` | master `.tex` + JD → tailored `.tex` + cover letter | Yes | Pure function |
-| `compile` | `.tex` → PDF | No | Ported, deterministic (`tectonic`) |
-| `apply_agent` | job + tailored resume → submit-ready browser state | Agent | Only unit needing a live browser |
-| `bot` | Telegram updates → status transitions + messages | No | The stateful/interactive orchestrator |
-| `tracker` | — | No | SQLite system of record; everything reads/writes here |
+| Unit | Location | Input → Output | LLM? | Notes |
+|------|----------|----------------|------|-------|
+| `ingest` | worker | search filters → list of raw postings | No | Pure given HTML; parse-tested against fixtures |
+| `rank` | lib | postings + profile → scored top-N | Yes | Pure function; stubbed LLM in tests |
+| `tailor` | lib | master `.tex` + JD → tailored `.tex` + cover letter | Yes | Pure function |
+| `compile` | lib | `.tex` → PDF | No | `tectonic` via `execa`, deterministic |
+| `applyAgent` | worker | job + tailored resume → submit-ready browser state | Agent | Only unit needing a live browser |
+| `bot` | worker | Telegram updates → status transitions + messages | No | The stateful/interactive orchestrator |
+| `tracker` | lib | — | No | SQLite system of record; everything reads/writes here |
+| dashboard | app | SQLite → rendered tables | No | Read-only; Next.js server components |
 
 **Design principle:** status flows one direction; each Telegram tap maps to exactly one
-status transition. No unit holds business state in memory — SQLite is the source of truth.
+status transition. No unit holds business state in memory — SQLite is the source of truth,
+shared between worker and web.
 
 ---
 
 ## 5. Daily Flow
 
-### 8:00 PM — scheduled pipeline
+### 8:00 PM — scheduled pipeline (worker)
 1. `ingest` opens the persistent LinkedIn session, runs each configured search filter,
    scrapes result cards (title, company, location, JD link, Easy-Apply vs external flag).
    Dedupes against `jobs` (by `linkedin_job_id`) so a job is never shown twice.
@@ -133,23 +161,21 @@ status transition. No unit holds business state in memory — SQLite is the sour
        re-runs with the note (accumulated in `edit_notes`) → recompile → re-send Gate 2.
        Loops until Submit or Cancel.
      - **Cancel** → `cancelled`.
-     - **Submit** → `apply_agent` opens the job, fills the Easy Apply form from
+     - **Submit** → `applyAgent` opens the job, fills the Easy Apply form from
        `profile.json`, uploads the tailored PDF, and **pauses at the final submit**. If it
        hits a screening question it can't confidently answer, it asks on Telegram. On the
        user's Submit confirmation it clicks submit → `tracker` → `applied` (+ timestamp).
 
 **Two human gates per job:** Apply/Deny on the digest, then Submit/Edit/Cancel on the
-tailored materials. The agent never submits without an explicit Submit tap.
+tailored materials. The agent never submits without an explicit Submit tap. The web
+dashboard reflects every status change but never initiates one.
 
 ---
 
-## 6. Data Model (SQLite — `data/applier.db`)
+## 6. Data Model (SQLite — `data/applier.db`, `better-sqlite3`)
 
 ### `jobs` — every posting ever seen (dedupe source of truth)
-- `id` (PK)
-- `linkedin_job_id` (unique — LinkedIn's job id, used for dedupe)
-- `title`, `company`, `location`
-- `url`
+- `id` (PK), `linkedin_job_id` (unique — dedupe), `title`, `company`, `location`, `url`
 - `apply_type` — `easy_apply` | `external`
 - `jd_text` — raw JD (fetched at apply time, not ingest, to stay light)
 - `first_seen`
@@ -161,9 +187,7 @@ tailored materials. The agent never submits without an explicit Submit tap.
 - `id`, `job_id` (FK)
 - `status` — `suggested` → `dismissed` / `external_sent` / `tailoring` /
   `awaiting_submit` / `cancelled` / `applied` / `failed`
-- `resume_path`, `cover_letter_path`
-- `edit_notes` (accumulated chat edit instructions)
-- `applied_at`, `error`, `updated_at`
+- `resume_path`, `cover_letter_path`, `edit_notes`, `applied_at`, `error`, `updated_at`
 
 ### `runs` — one row per 8 PM execution
 - `id`, `date`, `searched`, `found_new`, `suggested` (counts), `status`, `error`
@@ -182,9 +206,9 @@ Each stage is isolated; failures never cascade.
   job; other jobs proceed.
 - `compile` (tectonic) fails → job `failed` with the LaTeX error; user notified; no
   broken PDF sent.
-- `apply_agent` stalls or hits an unanswerable question → pauses and asks on Telegram
+- `applyAgent` stalls or hits an unanswerable question → pauses and asks on Telegram
   rather than guessing or submitting.
-- Service crash/restart → state is in SQLite, not memory; on boot it resumes pending
+- Worker crash/restart → state is in SQLite, not memory; on boot it resumes pending
   approvals. Telegram callbacks are **idempotent** (a double-tap cannot double-submit).
 
 ---
@@ -192,8 +216,8 @@ Each stage is isolated; failures never cascade.
 ## 8. LinkedIn Safety
 
 This is what keeps the account alive — treated as a first-class requirement.
-- **One persistent Chrome profile**, real (non-headless) browser, logged in once
-  manually; reused for both ingest and apply so the fingerprint never changes.
+- **One persistent Chrome context** (`browser_profile/`), headed (non-headless), logged in
+  once manually; reused for both ingest and apply so the fingerprint never changes.
 - **Human-like pacing** — randomized action delays; a configurable **daily apply cap**
   (default ~5–10). Ingest only reads search pages (low-risk) vs apply (rarer, higher-risk).
 - **Login-challenge detection** — on captcha/2FA/checkpoint the agent does **not** try to
@@ -219,55 +243,56 @@ No usable LinkedIn API exists for an individual job seeker:
   LinkedIn approval, and is **employer-side** (post jobs, receive applicants). There is **no
   public API for a seeker to search jobs or submit applications.**
 
-A third-party jobs-aggregator API could supply *listings* without scraping, but (a)
-coverage/freshness varies and it may miss LinkedIn postings, and (b) it cannot *apply*.
 Decision: **scrape the logged-in LinkedIn session** for best coverage and Easy-Apply
 detection. The apply step requires the browser agent regardless of ingestion source.
 
 ---
 
-## 10. Testing Strategy
+## 10. Testing Strategy (Vitest)
 
 - **Unit (no network/LLM):** `rank` and `tailor` with recorded fixture postings + stubbed
-  LLM; `compile` with a sample `.tex`; `tracker` status transitions against a temp SQLite db.
+  `llm.completeJson`; `compile` with a sample `.tex`; `tracker` status transitions against a
+  temp SQLite db.
 - **Ingest:** against **saved LinkedIn HTML fixtures** (parsing is pure given HTML) — no
   hitting LinkedIn in tests.
-- **Bot:** handler logic via simulated Telegram update objects (button callbacks, text
+- **Bot:** handler logic via simulated grammy update/context objects (button callbacks, text
   edits) → assert correct status transition + outgoing message.
 - **Apply agent:** verified **manually** against a few real Easy Apply jobs (it pauses at
   submit → safe to dry-run). No automated test drives live LinkedIn.
-- **End-to-end smoke:** a `--dry-run` mode runs the full pipeline but stops before any real
-  submit, so a full 8 PM cycle can be watched on demand.
+- **Dashboard:** component render tests against a seeded temp DB (read-only).
+- **End-to-end smoke:** a `--dry-run` worker mode that runs the full pipeline but stops
+  before any real submit, so a full 8 PM cycle can be watched on demand.
 
 ---
 
-## 11. Configuration (`config/settings.yaml` — illustrative)
+## 11. Configuration
 
+`config/settings.yaml` (illustrative; real file gitignored, `settings.example.yaml` committed):
 - `schedule.time`: `"20:00"` (local)
-- `search.filters`: list of `{ keywords, location, experience_level, date_posted, min_ctc? }`
-- `ranking.top_n`: `10`
-- `apply.daily_cap`: e.g. `8`
-- `apply.easy_apply_only`: `true`
-- `paths`: master resume, jobs dir, db, browser profile
-- `telegram`: bot token, chat id (secrets via env, not committed)
-- `llm`: provider/model for ranking + tailoring
+- `search.filters`: list of `{ keywords, location, experienceLevel, datePosted, minCtc? }`
+- `ranking.topN`: `10`
+- `apply.dailyCap`: e.g. `8`; `apply.easyApplyOnly`: `true`
+- `llm.model`: Anthropic model id for ranking + tailoring
+- `telegram.chatId`: the user's chat id
+
+Secrets via `.env` (not committed): `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`.
 
 `config/profile.json` is ported from `resume-automation` (name, email, phone, location,
 links, current/expected CTC, notice period, preferred locations, relocation flag).
 
 ---
 
-## 12. Build Order (for the implementation plan)
+## 12. Build Order (plans)
 
-1. Project scaffold + config + SQLite schema (`tracker`).
-2. Port tailoring pipeline (`master_resume.tex`, `compile`) + `tailor` (LLM).
-3. `ingest` (Playwright + persistent profile) against fixtures, then live.
-4. `rank` (LLM) → top-N.
-5. Telegram bot: digest + Apply/Deny (Gate 1) + tracker wiring.
-6. Gate 2: tailored-materials approval + chat edit loop.
-7. `apply_agent` (Claude Agent SDK) — Easy Apply fill + pause-at-submit + escalation.
-8. `scheduler` + `main.py` wiring + `--dry-run`.
-9. LinkedIn-safety hardening (pacing, caps, challenge detection).
+1. **Foundation & Tailoring** — Node/TS package scaffold + shared `lib/` (config, types,
+   db/tracker, `compile` via tectonic, `llm` seam, `rank`, `tailor`); all Vitest-tested,
+   no browser/network. (Next.js + shadcn scaffold deferred to Plan 5.) ← Plan 1
+2. **Ingestion** — Playwright + persistent LinkedIn context, fixture-tested parsing. ← Plan 2
+3. **Telegram bot & orchestration** — grammy digest, both approval gates, edit loop,
+   `node-cron` 8 PM scheduler, `--dry-run`. ← Plan 3
+4. **Apply agent & safety** — Claude Agent SDK Easy Apply fill + pause-at-submit +
+   escalation; LinkedIn pacing/caps/challenge detection. ← Plan 4
+5. **Web dashboard** — shadcn read-only tracker + run-history pages. ← Plan 5
 
 Subsequent sub-projects (own spec → plan → build each): credentials vault + external-site
 apply; additional platforms (Naukri/Indeed/Instahyre); LinkedIn networking.

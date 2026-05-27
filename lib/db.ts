@@ -1,0 +1,45 @@
+import Database from "better-sqlite3";
+
+export type DB = Database.Database;
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS jobs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  linkedin_job_id TEXT UNIQUE NOT NULL,
+  title TEXT, company TEXT, location TEXT, url TEXT,
+  apply_type TEXT NOT NULL,
+  jd_text TEXT DEFAULT '',
+  first_seen TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS suggestions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id INTEGER NOT NULL REFERENCES jobs(id),
+  run_date TEXT NOT NULL,
+  rank INTEGER, fit_score REAL, fit_reason TEXT
+);
+CREATE TABLE IF NOT EXISTS applications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id INTEGER NOT NULL REFERENCES jobs(id),
+  status TEXT NOT NULL,
+  resume_path TEXT, cover_letter_path TEXT,
+  edit_notes TEXT DEFAULT '',
+  applied_at TEXT, error TEXT,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  searched INTEGER, found_new INTEGER, suggested INTEGER,
+  status TEXT, error TEXT
+);
+`;
+
+export function openDb(path = ":memory:"): DB {
+  const db = new Database(path);
+  db.pragma("foreign_keys = ON");
+  return db;
+}
+
+export function migrate(db: DB): void {
+  db.exec(SCHEMA);
+}
