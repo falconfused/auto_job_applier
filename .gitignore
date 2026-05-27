@@ -7,3 +7,4 @@ config/settings.yaml
 .env
 resume/jobs/
 *.log
+tests/fixtures/linkedin_search.html
