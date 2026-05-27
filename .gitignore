@@ -1,0 +1,9 @@
+node_modules/
+.next/
+dist/
+data/*.db
+browser_profile/
+config/settings.yaml
+.env
+resume/jobs/
+*.log
