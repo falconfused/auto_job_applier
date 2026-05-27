@@ -9,6 +9,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "login": "tsx worker/login.ts",
+    "import-cookie": "tsx worker/importCookie.ts",
     "capture": "tsx worker/capture.ts",
     "ingest": "tsx worker/ingest.ts"
   },
