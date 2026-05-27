@@ -23,7 +23,7 @@ describe("compilePdf", () => {
     expect(existsSync(pdf)).toBe(true);
     expect(pdf.endsWith(".pdf")).toBe(true);
     expect(statSync(pdf).size).toBeGreaterThan(0);
-  });
+  }, 60000);
 
   it("throws CompileError when tectonic binary is missing", async () => {
     const dir = mkdtempSync(join(tmpdir(), "aja-"));

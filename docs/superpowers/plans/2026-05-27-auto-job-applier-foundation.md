@@ -280,7 +280,7 @@ describe("compilePdf", () => {
     expect(existsSync(pdf)).toBe(true);
     expect(pdf.endsWith(".pdf")).toBe(true);
     expect(statSync(pdf).size).toBeGreaterThan(0);
-  });
+  }, 60000); // tectonic can exceed vitest's default 5s timeout (cold package downloads)
 
   it("throws CompileError when tectonic binary is missing", async () => {
     const dir = mkdtempSync(join(tmpdir(), "aja-"));
