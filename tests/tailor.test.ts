@@ -33,4 +33,11 @@ describe("tailor", () => {
     });
     expect(capturedUser).toContain("emphasize python");
   });
+
+  it("throws on a malformed LLM response (missing fields)", async () => {
+    const complete = async () => ({ resumeTex: "only resume, no cover letter" });
+    await expect(
+      tailor({ masterTex: "MASTER", jdText: "JD", profile: {}, complete }),
+    ).rejects.toThrow(/malformed/);
+  });
 });

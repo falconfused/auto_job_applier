@@ -70,4 +70,19 @@ describe("tracker", () => {
     expect(run?.found_new).toBe(5);
     expect(run?.status).toBe("ok");
   });
+
+  it("addSuggestion stores a ranked suggestion", () => {
+    const jobId = tracker.addJob(db, sample);
+    const sugId = tracker.addSuggestion(db, jobId, "2026-05-28", 1, 87.5, "great fit");
+    expect(sugId).toBeGreaterThan(0);
+  });
+
+  it("setResumePaths records artifact paths", () => {
+    const jobId = tracker.addJob(db, sample);
+    const appId = tracker.createApplication(db, jobId);
+    tracker.setResumePaths(db, appId, "/r.pdf", "/c.pdf");
+    const app = tracker.getApplication(db, appId);
+    expect(app?.resume_path).toBe("/r.pdf");
+    expect(app?.cover_letter_path).toBe("/c.pdf");
+  });
 });

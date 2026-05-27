@@ -26,5 +26,8 @@ export async function tailor(opts: TailorOpts): Promise<TailoredDocs> {
     editInstructions: opts.editNotes ?? "",
   });
   const data = await complete(SYSTEM, user, { model: opts.model });
+  if (typeof data?.resumeTex !== "string" || typeof data?.coverLetterTex !== "string") {
+    throw new Error("tailor: malformed LLM response (expected string resumeTex and coverLetterTex)");
+  }
   return { resumeTex: data.resumeTex, coverLetterTex: data.coverLetterTex };
 }

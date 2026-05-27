@@ -9,9 +9,15 @@ function getClient(): Anthropic {
 }
 
 function extractJson(text: string): any {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const body = fenced ? fenced[1] : text;
-  return JSON.parse(body.trim());
+  const trimmed = text.trim();
+  if (!trimmed) throw new Error("llm: empty response from model");
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const body = (fenced ? fenced[1] : trimmed).trim();
+  try {
+    return JSON.parse(body);
+  } catch (err) {
+    throw new Error(`llm: failed to parse JSON response (${(err as Error).message}); got: ${body.slice(0, 300)}`);
+  }
 }
 
 /** Send a system+user prompt and parse the reply as JSON. */
