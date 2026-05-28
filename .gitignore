@@ -4,6 +4,8 @@ dist/
 data/*.db
 browser_profile/
 config/settings.yaml
+config/profile.json
+resume/master_resume.tex
 .env
 resume/jobs/
 *.log

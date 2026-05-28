@@ -1,0 +1,17 @@
+{
+  "name": "Your Name",
+  "email": "you@example.com",
+  "phone": "+91 0000000000",
+  "location": "City, Country",
+  "linkedin": "https://linkedin.com/in/yourhandle",
+  "github": "https://github.com/yourhandle",
+  "leetcode": "https://leetcode.com/yourhandle",
+  "current_company": "Your Company",
+  "current_title": "Your Title",
+  "years_experience": 0,
+  "notice_period_days": 0,
+  "current_ctc_lpa": 0,
+  "expected_ctc_lpa": 0,
+  "willing_to_relocate": true,
+  "preferred_locations": ["City1", "City2"]
+}
