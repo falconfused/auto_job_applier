@@ -2,15 +2,20 @@ import type { ScoredPosting } from "../lib/types.js";
 
 export function formatDigest(scored: ScoredPosting[]): string {
   if (scored.length === 0) return "No matches found in tonight's run.";
-  const lines = scored.map((s, i) => {
-    const tag = s.posting.applyType === "external" ? " 🔗 external" : "";
+  // Telegram caps messages at 4096 chars; cap the digest to the top 20
+  // (full list is in the dashboard).
+  const TELEGRAM_TOP_N = 20;
+  const top = scored.slice(0, TELEGRAM_TOP_N);
+  const lines = top.map((s, i) => {
+    const tag = s.posting.applyType === "external" ? " 🔗" : "";
     return [
       `${i + 1}. ${s.posting.title} — ${s.posting.company}${tag}`,
       `   📍 ${s.posting.location}   •   fit: ${s.fitScore}/100`,
-      `   ${s.fitReason}`,
     ].join("\n");
   });
-  return ["Tonight's top matches:", "", ...lines].join("\n");
+  const header = `Tonight's top ${top.length} (of ${scored.length}) matches:`;
+  const footer = scored.length > top.length ? `\n…and ${scored.length - top.length} more — see the dashboard.` : "";
+  return [header, "", ...lines].join("\n") + footer;
 }
 
 export function formatExternalMessage(s: ScoredPosting): string {

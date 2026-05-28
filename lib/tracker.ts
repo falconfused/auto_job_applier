@@ -82,6 +82,27 @@ export function appendEditNote(db: DB, appId: number, note: string): void {
   );
 }
 
+/** Return all jobs that have never received a suggestion (= never been ranked). */
+export function getUnrankedJobs(db: DB): Posting[] {
+  const rows = db
+    .prepare(
+      `SELECT j.* FROM jobs j
+        LEFT JOIN suggestions s ON s.job_id = j.id
+        WHERE s.id IS NULL`,
+    )
+    .all() as any[];
+  return rows.map((r) => ({
+    sourceJobId: r.source_job_id,
+    source: r.source,
+    title: r.title,
+    company: r.company,
+    location: r.location,
+    url: r.url,
+    applyType: r.apply_type,
+    jdText: r.jd_text || "",
+  }));
+}
+
 export function addSuggestion(
   db: DB,
   jobId: number,

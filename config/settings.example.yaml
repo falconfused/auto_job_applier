@@ -1,7 +1,7 @@
 schedule:
   time: "20:00"            # local time, HH:MM 24h
 ranking:
-  topN: 10
+  topN: 500           # rank-and-keep all ingested postings; dashboard sorts best→worst
 search:
   filters:
     - keywords: "Software Development Engineer"

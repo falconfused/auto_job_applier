@@ -68,8 +68,16 @@ export async function runDailyPipeline(args: PipelineArgs): Promise<PipelineResu
     }
     foundNew = newPostings.length;
 
-    if (newPostings.length > 0) {
-      scored = await deps.rankFn(newPostings, {
+    // Also rank any pre-existing jobs that never got a fit score (e.g. ingested
+    // by an earlier run that hit topN before reaching them, or by a run that
+    // failed during ranking).
+    const unranked = tracker.getUnrankedJobs(db);
+    const newKeys = new Set(newPostings.map((p) => `${p.source}:${p.sourceJobId}`));
+    const backfill = unranked.filter((p) => !newKeys.has(`${p.source}:${p.sourceJobId}`));
+    const toRank = [...newPostings, ...backfill];
+
+    if (toRank.length > 0) {
+      scored = await deps.rankFn(toRank, {
         resumeText,
         profile,
         topN: settings.ranking.topN,
@@ -84,7 +92,11 @@ export async function runDailyPipeline(args: PipelineArgs): Promise<PipelineResu
         const job = tracker.getJobBySource(db, s.posting.source, s.posting.sourceJobId);
         if (!job) continue;
         tracker.addSuggestion(db, job.id, runDate, i + 1, s.fitScore, s.fitReason);
-        tracker.createApplication(db, job.id);
+        // createApplication is idempotent for new jobs; skip if one already exists
+        const existingApp = db
+          .prepare("SELECT id FROM applications WHERE job_id = ?")
+          .get(job.id) as { id: number } | undefined;
+        if (!existingApp) tracker.createApplication(db, job.id);
       }
     }
   } catch (err) {
