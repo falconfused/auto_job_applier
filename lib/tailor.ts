@@ -6,14 +6,20 @@ const SYSTEM =
   "candidate's profile, and optional edit instructions. Produce a tailored LaTeX resume " +
   "(same document class/structure as the master, truthful — never invent experience) and " +
   "a matching LaTeX cover letter.\n\n" +
-  "HARD CONSTRAINT: BOTH the resume and the cover letter MUST fit on EXACTLY ONE PAGE. " +
-  "This is non-negotiable for entry-level candidates. To stay within one page:\n" +
-  "  - Drop bullet points or whole sub-bullets that are weakest for THIS posting\n" +
-  "  - Trim wordy bullets to ≤ 2 lines each\n" +
-  "  - Drop projects/experiences that are least relevant to the JD (keep 2-3 strongest)\n" +
-  "  - Compress whitespace if needed (smaller \\vspace, tighter \\setlength{\\parskip})\n" +
-  "  - For the cover letter: 3 paragraphs max, ~250 words total, no closing fluff\n" +
-  "Never go to a second page just to fit more content. Less is more.\n\n" +
+  "TAILORING APPROACH:\n" +
+  "  - Default to KEEPING all bullets, projects, and experiences from the master resume.\n" +
+  "  - REWORD bullets to emphasize keywords/tech from THIS job description (don't invent — only re-frame).\n" +
+  "  - Reorder so the most JD-relevant content appears first within each section.\n" +
+  "  - PRESERVE bullet count and word count — match the master's density. The reader expects " +
+  "    a full one-page resume, not a half-page one.\n\n" +
+  "PAGE LIMIT (ONLY trigger if necessary):\n" +
+  "  - BOTH the resume and cover letter must fit on EXACTLY ONE PAGE.\n" +
+  "  - DO NOT pre-emptively trim. Only drop content if you are confident the master is too long.\n" +
+  "  - If you must trim: drop the LEAST JD-relevant bullet first, never a whole project unless " +
+  "    nothing else can fit.\n\n" +
+  "COVER LETTER:\n" +
+  "  - 3 substantive paragraphs (~300-400 words). Specific to the company and role.\n" +
+  "  - Don't be brief just to be brief; fill the page when you have signal to share.\n\n" +
   "Respond ONLY as JSON: " +
   '{"resumeTex": "<full latex>", "coverLetterTex": "<full latex>"}';
 
