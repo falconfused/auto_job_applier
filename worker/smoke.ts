@@ -1,42 +1,29 @@
 /**
- * Live ingestion smoke test with a rule-based relevance filter.
- * Runs the full ingest pipeline against LinkedIn using the seeded browser_profile/
- * session, then filters/ranks the results for fit against the user's profile
- * (no LLM key required). Prints the top 10.
+ * Live ingestion + LLM relevance ranking smoke test.
+ * Uses the seeded browser_profile/ session for ingest, and Claude on AWS Bedrock
+ * (via lib/llm.ts → lib/rank.ts) for resume-aware ranking. Falls back to a
+ * rule-based heuristic if Bedrock fails (missing/expired creds, etc.).
  *
  * Usage: npm run smoke
- *
- * NOTE: this heuristic ranker is a stop-gap for when ANTHROPIC_API_KEY is unset.
- * The proper LLM ranker (lib/rank.ts) will replace it as soon as a key is provided.
  */
+import "dotenv/config";
+// AWS_PROFILE from ~/.zshrc would override the explicit .env creds; force them.
+delete process.env.AWS_PROFILE;
+
+import { readFileSync } from "node:fs";
 import { openDb, migrate } from "../lib/db.js";
 import { loadProfile } from "../lib/config.js";
 import { ingest } from "./ingest.js";
-import type { Posting } from "../lib/types.js";
+import { rank } from "../lib/rank.js";
+import { MASTER_RESUME } from "../lib/paths.js";
+import type { Posting, ScoredPosting } from "../lib/types.js";
 
-interface Scored {
-  posting: Posting;
-  score: number;
-  reasons: string[];
-}
-
-// Words that disqualify a posting outright for an SDE2 with ~2.5 years' experience.
+// ----- rule-based fallback (used if LLM rank fails) -----
 const HARD_EXCLUDE = [
-  /\bintern(ship)?\b/i,
-  /\btrainee\b/i,
-  /\bfresher\b/i,
-  /\bgraduate program\b/i,
-  /\bconsultant\b/i,
-  /\bdomain expert\b/i,
-  /\bsales\b/i,
-  /\bmarketing\b/i,
-  /\brecruiter\b/i,
-  /\bhuman resources?\b/i,
-  /\bfinance\b/i,
-  /\baccount(ant|ing)\b/i,
+  /\bintern(ship)?\b/i, /\btrainee\b/i, /\bfresher\b/i, /\bgraduate program\b/i,
+  /\bconsultant\b/i, /\bdomain expert\b/i, /\bsales\b/i, /\bmarketing\b/i,
+  /\brecruiter\b/i, /\bhuman resources?\b/i, /\bfinance\b/i, /\baccount(ant|ing)\b/i,
 ];
-
-// Title keywords that signal a good fit.
 const TITLE_HITS: { re: RegExp; weight: number }[] = [
   { re: /\bsoftware\s+development\s+engineer\b/i, weight: 5 },
   { re: /\bsoftware\s+engineer\b/i, weight: 4 },
@@ -48,42 +35,28 @@ const TITLE_HITS: { re: RegExp; weight: number }[] = [
   { re: /\bpython|node|typescript|java|go(lang)?\b/i, weight: 1 },
 ];
 
-function scorePosting(p: Posting, preferredLocations: string[]): Scored {
-  const reasons: string[] = [];
-  const title = p.title || "";
-
-  for (const re of HARD_EXCLUDE) {
-    if (re.test(title)) return { posting: p, score: -1, reasons: [`excluded: matches ${re}`] };
-  }
-  // Also exclude obviously-misaligned senior-leadership titles for a 2.5-yr SDE.
-  if (/\b(director|vp|vice president|head of|chief)\b/i.test(title)) {
-    return { posting: p, score: -1, reasons: [`excluded: leadership title`] };
-  }
-
-  let score = 0;
-  for (const { re, weight } of TITLE_HITS) {
-    if (re.test(title)) {
-      score += weight;
-      reasons.push(`+${weight} title: ${re.source}`);
+function heuristicRank(postings: Posting[], preferred: string[]): ScoredPosting[] {
+  const out: ScoredPosting[] = [];
+  for (const p of postings) {
+    const title = p.title || "";
+    if (HARD_EXCLUDE.some((re) => re.test(title))) continue;
+    if (/\b(director|vp|vice president|head of|chief)\b/i.test(title)) continue;
+    let score = 0;
+    const reasons: string[] = [];
+    for (const { re, weight } of TITLE_HITS) {
+      if (re.test(title)) { score += weight; reasons.push(`+${weight} ${re.source}`); }
     }
+    const loc = (p.location || "").toLowerCase();
+    if (preferred.some((pref) => pref && loc.includes(pref.toLowerCase()))) { score += 2; reasons.push("+2 preferred location"); }
+    if (p.applyType === "easy_apply") { score += 1; reasons.push("+1 easy_apply"); }
+    out.push({ posting: p, fitScore: score, fitReason: reasons.join(", ") });
   }
-  const loc = (p.location || "").toLowerCase();
-  for (const pref of preferredLocations) {
-    if (pref && loc.includes(pref.toLowerCase())) {
-      score += 2;
-      reasons.push(`+2 location: ${pref}`);
-      break;
-    }
-  }
-  if (p.applyType === "easy_apply") {
-    score += 1;
-    reasons.push("+1 easy_apply");
-  }
-  return { posting: p, score, reasons };
+  return out.sort((a, b) => b.fitScore - a.fitScore);
 }
 
 async function main() {
   const profile = loadProfile() as Record<string, any>;
+  const resumeText = readFileSync(MASTER_RESUME, "utf8");
   const preferred: string[] = profile.preferred_locations ?? [];
 
   const db = openDb(":memory:");
@@ -96,25 +69,29 @@ async function main() {
   ];
 
   const postings = await ingest(db, filters, true);
+  console.log(`\nFetched ${postings.length} postings. Ranking with Claude on Bedrock...`);
 
-  const ranked = postings
-    .map((p) => scorePosting(p, preferred))
-    .filter((s) => s.score >= 0)
-    .sort((a, b) => b.score - a.score);
+  let ranked: ScoredPosting[];
+  let ranker: string;
+  try {
+    ranked = await rank(postings, { resumeText, profile, topN: 10 });
+    ranker = "LLM (Claude / Bedrock)";
+  } catch (err) {
+    console.error(`LLM rank failed: ${(err as Error).message}\nFalling back to rule-based heuristic.`);
+    ranked = heuristicRank(postings, preferred).slice(0, 10);
+    ranker = "rule-based heuristic";
+  }
 
   const top = ranked.slice(0, 10);
-  const excluded = postings.length - ranked.length;
-
-  console.log(`\nFetched ${postings.length} postings, kept ${ranked.length} relevant, ${excluded} excluded.`);
-  console.log(`Top ${top.length} for ${profile.name ?? "you"}:\n`);
+  console.log(`\nTop ${top.length} via ${ranker}, for ${profile.name ?? "you"}:\n`);
   for (const [i, s] of top.entries()) {
     const p = s.posting;
     const idMatch = p.url.match(/\/jobs\/view\/(\d+)/);
     const cleanUrl = idMatch ? `https://www.linkedin.com/jobs/view/${idMatch[1]}` : p.url;
-    console.log(`${i + 1}. ${p.title}   [score ${s.score}]`);
+    console.log(`${i + 1}. ${p.title}   [fit ${s.fitScore}]`);
     console.log(`   ${p.company} · ${p.location || "(location missing)"}`);
     console.log(`   [${p.applyType}] ${cleanUrl}`);
-    console.log(`   why: ${s.reasons.join(", ")}\n`);
+    console.log(`   why: ${s.fitReason}\n`);
   }
   process.exit(0);
 }
