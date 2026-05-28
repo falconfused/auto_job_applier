@@ -17,9 +17,12 @@ import { loadProfile } from "../lib/config.js";
 import { rank } from "../lib/rank.js";
 import { tailor } from "../lib/tailor.js";
 import { compilePdf, CompileError } from "../lib/compile.js";
-import { MASTER_RESUME, JOBS_DIR } from "../lib/paths.js";
+import { MASTER_RESUME, JOBS_DIR, DB_PATH } from "../lib/paths.js";
 import { launchSession, fetchHtml } from "./session.js";
 import { ingest } from "./ingest.js";
+import * as tracker from "../lib/tracker.js";
+import { mkdirSync as mkd } from "node:fs";
+import { dirname } from "node:path";
 
 // ---- helpers ----
 const slug = (s: string) =>
@@ -85,7 +88,8 @@ async function trySendTelegram(
 async function main() {
   const profile = loadProfile() as Record<string, any>;
   const resumeText = readFileSync(MASTER_RESUME, "utf8");
-  const db = openDb(":memory:");
+  mkd(dirname(DB_PATH), { recursive: true });
+  const db = openDb(DB_PATH); // persistent — dashboard reads from here
   migrate(db);
 
   console.log("\n[1/5] Ingesting LinkedIn search results...");
@@ -102,6 +106,13 @@ async function main() {
   console.log(`  → top ${ranked.length}:`);
   for (const [i, s] of ranked.entries()) {
     console.log(`     ${i + 1}. [fit ${s.fitScore}] ${s.posting.title} · ${s.posting.company} · ${s.posting.location}`);
+  }
+  // Persist the run + top suggestions so the dashboard can render them.
+  const runDate = new Date().toISOString().slice(0, 10);
+  tracker.recordRun(db, { searched: filters.length, foundNew: postings.length, suggested: ranked.length, status: "ok" });
+  for (const [i, s] of ranked.entries()) {
+    const jobRow = tracker.getJobByLinkedinId(db, s.posting.linkedinJobId);
+    if (jobRow) tracker.addSuggestion(db, jobRow.id, runDate, i + 1, s.fitScore, s.fitReason);
   }
   if (!ranked.length) { console.log("\nnothing to tailor — exiting."); process.exit(0); }
 
@@ -130,6 +141,14 @@ async function main() {
   );
   console.log(`  artifacts in: ${jobDir}`);
 
+  // Persist an application row for #1 (the one we tailor) so the dashboard shows it.
+  const pickJob = tracker.getJobByLinkedinId(db, pick.posting.linkedinJobId);
+  let appId: number | null = null;
+  if (pickJob) {
+    appId = tracker.createApplication(db, pickJob.id);
+    tracker.setStatus(db, appId, "tailoring");
+  }
+
   console.log(`\n[5/5] Compiling PDFs via tectonic...`);
   let resumePdf: string | null = null;
   let coverPdf: string | null = null;
@@ -144,6 +163,12 @@ async function main() {
     console.log(`  ✓ cover_letter.pdf  (${statSync(coverPdf).size} bytes)`);
   } catch (e) {
     console.error(`  ✗ cover_letter compile: ${(e as CompileError).message.slice(0, 400)}`);
+  }
+
+  // Record artifact paths + final status (awaiting_submit since we stop before apply).
+  if (appId !== null) {
+    if (resumePdf && coverPdf) tracker.setResumePaths(db, appId, resumePdf, coverPdf);
+    tracker.setStatus(db, appId, resumePdf && coverPdf ? "awaiting_submit" : "failed");
   }
 
   // Optional: telegram delivery if a chat exists.

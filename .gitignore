@@ -10,3 +10,4 @@ resume/master_resume.tex
 resume/jobs/
 *.log
 tests/fixtures/linkedin_search.html
+data/dashboard.html
