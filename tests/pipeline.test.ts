@@ -5,7 +5,16 @@ import { runDailyPipeline } from "../worker/pipeline.js";
 import type { Posting, ScoredPosting } from "../lib/types.js";
 
 function posting(id: string, applyType: "easy_apply" | "external" = "easy_apply"): Posting {
-  return { linkedinJobId: id, title: `T${id}`, company: "Acme", location: "Remote", url: `https://x/${id}`, applyType, jdText: "" };
+  return {
+    sourceJobId: id,
+    source: "linkedin",
+    title: `T${id}`,
+    company: "Acme",
+    location: "Remote",
+    url: `https://x/${id}`,
+    applyType,
+    jdText: "",
+  };
 }
 
 let db: DB;
@@ -46,7 +55,7 @@ describe("runDailyPipeline", () => {
     expect(result.suggested).toBe(2);
     expect(result.status).toBe("ok");
     expect(tracker.getRun(db, result.runId)?.status).toBe("ok");
-    expect(tracker.getJobByLinkedinId(db, "1")).toBeTruthy();
+    expect(tracker.getJobBySource(db, "linkedin", "1")).toBeTruthy();
     expect(sent.length).toBeGreaterThanOrEqual(1);
     expect(sent[0]).toContain("T1");
   });
@@ -89,6 +98,6 @@ describe("runDailyPipeline", () => {
 
     expect(result.suggested).toBe(1);
     expect(sent).toEqual([]);
-    expect(tracker.getJobByLinkedinId(db, "1")).toBeTruthy();
+    expect(tracker.getJobBySource(db, "linkedin", "1")).toBeTruthy();
   });
 });

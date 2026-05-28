@@ -5,7 +5,7 @@ import { listApplications, listRuns } from "../lib/dashboard.js";
 import type { Posting } from "../lib/types.js";
 
 const sample: Posting = {
-  linkedinJobId: "1", title: "Backend Engineer", company: "Acme", location: "Bangalore",
+  sourceJobId: "1", source: "linkedin", title: "Backend Engineer", company: "Acme", location: "Bangalore",
   url: "https://linkedin.com/jobs/view/1", applyType: "easy_apply", jdText: "",
 };
 
@@ -27,7 +27,7 @@ describe("listApplications", () => {
   it("returns newest first", async () => {
     const a = tracker.addJob(db, sample);
     await new Promise((r) => setTimeout(r, 5));
-    const b = tracker.addJob(db, { ...sample, linkedinJobId: "2", title: "Newer" });
+    const b = tracker.addJob(db, { ...sample, sourceJobId: "2", title: "Newer" });
     tracker.createApplication(db, a);
     await new Promise((r) => setTimeout(r, 5));
     tracker.createApplication(db, b);

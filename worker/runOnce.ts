@@ -6,7 +6,6 @@ import { ensureDirs, MASTER_RESUME, DB_PATH } from "../lib/paths.js";
 import { openDb, migrate } from "../lib/db.js";
 import { runDailyPipeline } from "./pipeline.js";
 import { launchSession, fetchHtml as realFetchHtml, ensureLoggedIn } from "./session.js";
-import { parseSearchHtml } from "./parseSearch.js";
 import { rank } from "../lib/rank.js";
 
 async function main() {
@@ -43,8 +42,8 @@ async function main() {
       resumeText,
       dryRun,
       deps: {
+        // No parseHtml here — pipeline uses ingestSources for multi-source ingest.
         fetchHtml: (url) => realFetchHtml(context, url, "body"),
-        parseHtml: parseSearchHtml,
         rankFn: (postings, opts) => rank(postings, opts),
         sendMessage: send,
       },

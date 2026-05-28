@@ -11,7 +11,7 @@ const SYSTEM =
   "score it 0-15 even if the skills match perfectly.\n\n" +
   "Also weight target_roles, preferred_locations, and preferred_regions from the profile.\n\n" +
   "Respond ONLY as JSON: " +
-  '{"rankings": [{"linkedinJobId": "<id>", "fitScore": <0-100>, "fitReason": "<one line>"}]}';
+  '{"rankings": [{"sourceJobId": "<id>", "fitScore": <0-100>, "fitReason": "<one line>"}]}';
 
 interface RankOpts {
   resumeText: string;
@@ -19,28 +19,51 @@ interface RankOpts {
   topN: number;
   model?: string;
   complete?: CompleteJson;
+  /** Max postings to send to the model per call. Larger = fewer calls, but risks output truncation. */
+  batchSize?: number;
 }
+
+const DEFAULT_BATCH_SIZE = 40;
 
 export async function rank(postings: Posting[], opts: RankOpts): Promise<ScoredPosting[]> {
   if (postings.length === 0) return [];
   const complete = opts.complete ?? completeJson;
-  const byId = new Map(postings.map((p) => [p.linkedinJobId, p]));
+  const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE;
+
+  const allScored: ScoredPosting[] = [];
+  for (let i = 0; i < postings.length; i += batchSize) {
+    const batch = postings.slice(i, i + batchSize);
+    const scored = await rankBatch(batch, opts, complete);
+    allScored.push(...scored);
+  }
+  allScored.sort((a, b) => b.fitScore - a.fitScore);
+  return allScored.slice(0, opts.topN);
+}
+
+async function rankBatch(
+  postings: Posting[],
+  opts: RankOpts,
+  complete: CompleteJson,
+): Promise<ScoredPosting[]> {
   const user = JSON.stringify({
     resume: opts.resumeText,
     profile: opts.profile,
     postings: postings.map((p) => ({
-      linkedinJobId: p.linkedinJobId,
+      sourceJobId: p.sourceJobId,
+      source: p.source,
       title: p.title,
       company: p.company,
       location: p.location,
-      jdText: p.jdText,
+      // Truncate JD to keep prompt size + output bounded
+      jdText: (p.jdText || "").slice(0, 800),
     })),
   });
 
   const data = await complete(SYSTEM, user, { model: opts.model });
   const scored: ScoredPosting[] = [];
   for (const r of data?.rankings ?? []) {
-    const posting = byId.get(String(r.linkedinJobId));
+    const sourceJobId = String(r.sourceJobId ?? r.linkedinJobId ?? "");
+    const posting = postings.find((p) => p.sourceJobId === sourceJobId);
     if (!posting) continue;
     scored.push({
       posting,
@@ -48,6 +71,5 @@ export async function rank(postings: Posting[], opts: RankOpts): Promise<ScoredP
       fitReason: String(r.fitReason ?? ""),
     });
   }
-  scored.sort((a, b) => b.fitScore - a.fitScore);
-  return scored.slice(0, opts.topN);
+  return scored;
 }

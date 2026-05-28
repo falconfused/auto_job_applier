@@ -2,11 +2,12 @@ import type { DB } from "../lib/db.js";
 import type { Posting, ScoredPosting } from "../lib/types.js";
 import type { Settings } from "../lib/config.js";
 import * as tracker from "../lib/tracker.js";
-import { ingestWith } from "./ingest.js";
+import { ingestWith, ingestSources } from "./ingest.js";
 import { formatDigest, formatExternalMessage } from "./formatters.js";
 
 export interface PipelineDeps {
   fetchHtml: (url: string) => Promise<string>;
+  /** LinkedIn-only parser (legacy test path). When provided, bypasses ingestSources and uses ingestWith. */
   parseHtml?: (html: string) => Posting[];
   rankFn: (
     postings: Posting[],
@@ -38,14 +39,33 @@ export async function runDailyPipeline(args: PipelineArgs): Promise<PipelineResu
   let foundNew = 0;
   let scored: ScoredPosting[] = [];
 
+  let searched = settings.search.filters.length;
+
   try {
-    const newPostings = await ingestWith({
-      db,
-      filters: settings.search.filters,
-      easyApplyOnly: settings.apply.easyApplyOnly,
-      fetchHtml: deps.fetchHtml,
-      parse: deps.parseHtml,
-    });
+    let newPostings: Posting[];
+    if (deps.parseHtml) {
+      // Legacy / test path: LinkedIn only with injected parser.
+      newPostings = await ingestWith({
+        db,
+        filters: settings.search.filters,
+        easyApplyOnly: settings.apply.easyApplyOnly,
+        fetchHtml: deps.fetchHtml,
+        parse: deps.parseHtml,
+      });
+    } else {
+      // Live path: multi-source ingest.
+      const result = await ingestSources({
+        db,
+        fetchHtml: deps.fetchHtml,
+        linkedin: {
+          filters: settings.search.filters,
+          easyApplyOnly: settings.apply.easyApplyOnly,
+        },
+        internshala: settings.sources?.internshala,
+      });
+      newPostings = result.newPostings;
+      searched = result.searched;
+    }
     foundNew = newPostings.length;
 
     if (newPostings.length > 0) {
@@ -61,7 +81,7 @@ export async function runDailyPipeline(args: PipelineArgs): Promise<PipelineResu
       const runDate = new Date().toISOString();
       for (let i = 0; i < scored.length; i++) {
         const s = scored[i];
-        const job = tracker.getJobByLinkedinId(db, s.posting.linkedinJobId);
+        const job = tracker.getJobBySource(db, s.posting.source, s.posting.sourceJobId);
         if (!job) continue;
         tracker.addSuggestion(db, job.id, runDate, i + 1, s.fitScore, s.fitReason);
         tracker.createApplication(db, job.id);
@@ -69,7 +89,7 @@ export async function runDailyPipeline(args: PipelineArgs): Promise<PipelineResu
     }
   } catch (err) {
     const runId = tracker.recordRun(db, {
-      searched: settings.search.filters.length,
+      searched,
       foundNew,
       suggested: 0,
       status: "failed",
@@ -82,7 +102,7 @@ export async function runDailyPipeline(args: PipelineArgs): Promise<PipelineResu
     }
     return {
       runId,
-      searched: settings.search.filters.length,
+      searched,
       foundNew,
       suggested: 0,
       status: "failed",

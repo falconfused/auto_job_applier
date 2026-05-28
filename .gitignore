@@ -10,6 +10,7 @@ resume/master_resume.tex
 resume/jobs/
 *.log
 tests/fixtures/linkedin_search.html
+tests/fixtures/internshala_search.html
 
 # typescript incremental build cache
 *.tsbuildinfo

@@ -5,7 +5,8 @@ import type { ScoredPosting } from "../lib/types.js";
 function scored(id: string, applyType: "easy_apply" | "external", score: number): ScoredPosting {
   return {
     posting: {
-      linkedinJobId: id,
+      sourceJobId: id,
+      source: "linkedin",
       title: `Title ${id}`,
       company: `Co ${id}`,
       location: "Remote",

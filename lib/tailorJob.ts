@@ -33,12 +33,15 @@ export interface TailorJobResult {
 
 /**
  * Tailor a resume + cover letter for a single posting and compile both to PDF.
- * Output goes to ~/job_applications/<company-slug>-<linkedinJobId>/.
- * Including the job id keeps multiple postings from the same company separate.
+ * Output goes to ~/job_applications/<company-slug>-<source>-<sourceJobId>/.
+ * Including source + job id keeps multiple postings from the same company across sources separate.
  */
 export async function tailorAndCompile(opts: TailorJobOpts): Promise<TailorJobResult> {
   const slug = slugifyCompany(opts.posting.company);
-  const outDir = join(TAILORED_ROOT, `${slug}-${opts.posting.linkedinJobId}`);
+  const outDir = join(
+    TAILORED_ROOT,
+    `${slug}-${opts.posting.source}-${opts.posting.sourceJobId}`,
+  );
   mkdirSync(outDir, { recursive: true });
 
   const docs = await tailor({

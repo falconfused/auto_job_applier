@@ -29,7 +29,8 @@ export async function tailorApplicationAction(appId: number): Promise<{
   const masterTex = readFileSync(MASTER_RESUME, "utf8");
 
   const posting: Posting = {
-    linkedinJobId: app.linkedin_job_id,
+    sourceJobId: app.source_job_id,
+    source: app.source as Posting["source"],
     title: app.title,
     company: app.company,
     location: app.location,
@@ -56,5 +57,51 @@ export async function tailorApplicationAction(appId: number): Promise<{
     tracker.setStatus(db, appId, "failed", `tailor: ${msg}`);
     revalidatePath(`/applications/${appId}`);
     return { ok: false, error: msg };
+  }
+}
+
+export async function markAppliedAction(appId: number): Promise<{ ok: true } | { ok: false; error: string }> {
+  ensureDirs();
+  const db = openDb(DB_PATH);
+  migrate(db);
+  try {
+    tracker.setStatus(db, appId, "applied");
+    revalidatePath(`/applications/${appId}`);
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
+export async function dismissAction(appId: number): Promise<{ ok: true } | { ok: false; error: string }> {
+  ensureDirs();
+  const db = openDb(DB_PATH);
+  migrate(db);
+  try {
+    tracker.setStatus(db, appId, "dismissed");
+    revalidatePath(`/applications/${appId}`);
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
+export async function unmarkAction(appId: number): Promise<{ ok: true } | { ok: false; error: string }> {
+  ensureDirs();
+  const db = openDb(DB_PATH);
+  migrate(db);
+  try {
+    // "Reopen" — clears applied/dismissed status, returns to suggested or awaiting_submit.
+    const app = getApplicationDetail(db, appId);
+    if (!app) return { ok: false, error: `application ${appId} not found` };
+    const next = app.resume_path ? "awaiting_submit" : "suggested";
+    tracker.setStatus(db, appId, next);
+    revalidatePath(`/applications/${appId}`);
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
   }
 }

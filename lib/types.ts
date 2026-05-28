@@ -1,7 +1,12 @@
 export type ApplyType = "easy_apply" | "external";
 
+export type JobSource = "linkedin" | "internshala" | "naukri" | "wellfound" | "hirist";
+
 export interface Posting {
-  linkedinJobId: string;
+  /** Stable id within the source (e.g. LinkedIn job-id, Internshala internship-id). */
+  sourceJobId: string;
+  /** Where this posting came from. */
+  source: JobSource;
   title: string;
   company: string;
   location: string;

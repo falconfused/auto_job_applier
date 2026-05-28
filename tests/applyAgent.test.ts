@@ -5,7 +5,7 @@ import { applyToJobWith } from "../worker/applyAgent.js";
 import type { Posting } from "../lib/types.js";
 
 const sample: Posting = {
-  linkedinJobId: "55", title: "Backend Engineer", company: "Acme", location: "Bangalore",
+  sourceJobId: "55", source: "linkedin", title: "Backend Engineer", company: "Acme", location: "Bangalore",
   url: "https://linkedin.com/jobs/view/55", applyType: "easy_apply", jdText: "",
 };
 
@@ -45,7 +45,7 @@ function deps(over: any = {}) {
 describe("applyToJobWith", () => {
   it("blocks when daily cap is hit and notifies", async () => {
     for (let i = 0; i < 5; i++) {
-      const jid = tracker.addJob(db, { ...sample, linkedinJobId: `pre${i}` });
+      const jid = tracker.addJob(db, { ...sample, sourceJobId: `pre${i}` });
       const aid = tracker.createApplication(db, jid);
       tracker.setStatus(db, aid, "applied");
     }

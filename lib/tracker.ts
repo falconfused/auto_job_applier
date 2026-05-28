@@ -17,22 +17,26 @@ const now = () => new Date().toISOString();
 
 export function addJob(db: DB, p: Posting): number {
   const existing = db
-    .prepare("SELECT id FROM jobs WHERE linkedin_job_id = ?")
-    .get(p.linkedinJobId) as { id: number } | undefined;
+    .prepare("SELECT id FROM jobs WHERE source = ? AND source_job_id = ?")
+    .get(p.source, p.sourceJobId) as { id: number } | undefined;
   if (existing) return existing.id;
   const info = db
     .prepare(
-      "INSERT INTO jobs (linkedin_job_id, title, company, location, url, apply_type, jd_text, first_seen) " +
-        "VALUES (?,?,?,?,?,?,?,?)",
+      "INSERT INTO jobs (source, source_job_id, title, company, location, url, apply_type, jd_text, first_seen) " +
+        "VALUES (?,?,?,?,?,?,?,?,?)",
     )
-    .run(p.linkedinJobId, p.title, p.company, p.location, p.url, p.applyType, p.jdText, now());
+    .run(p.source, p.sourceJobId, p.title, p.company, p.location, p.url, p.applyType, p.jdText, now());
   return Number(info.lastInsertRowid);
 }
 
-export function getJobByLinkedinId(db: DB, linkedinJobId: string): Record<string, any> | undefined {
-  return db.prepare("SELECT * FROM jobs WHERE linkedin_job_id = ?").get(linkedinJobId) as
-    | Record<string, any>
-    | undefined;
+export function getJobBySource(
+  db: DB,
+  source: string,
+  sourceJobId: string,
+): Record<string, any> | undefined {
+  return db
+    .prepare("SELECT * FROM jobs WHERE source = ? AND source_job_id = ?")
+    .get(source, sourceJobId) as Record<string, any> | undefined;
 }
 
 export function createApplication(db: DB, jobId: number): number {

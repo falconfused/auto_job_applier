@@ -37,7 +37,7 @@ export const completeJson: CompleteJson = async (system, user, opts) => {
   const model = opts?.model ?? DEFAULT_MODEL;
   const resp = await getClient().messages.create({
     model,
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: `${system}\nRespond with ONLY valid JSON, no prose.`,
     messages: [{ role: "user", content: user }],
   });

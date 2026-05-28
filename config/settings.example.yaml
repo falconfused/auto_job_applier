@@ -10,8 +10,8 @@ search:
       datePosted: "past-24h"
 apply:
   dailyCap: 8
-  easyApplyOnly: true
+  easyApplyOnly: false   # fetch BOTH easy-apply and external (company-ATS) jobs
 llm:
-  model: "claude-sonnet-4-6"
+  model: "us.anthropic.claude-sonnet-4-6"   # AWS Bedrock cross-region inference profile
 telegram:
   chatId: 0                # filled in by the user; token comes from env

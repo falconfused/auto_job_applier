@@ -5,7 +5,8 @@ import { buildBot } from "../worker/bot.js";
 import type { Posting } from "../lib/types.js";
 
 const sample: Posting = {
-  linkedinJobId: "100",
+  sourceJobId: "100",
+  source: "linkedin",
   title: "Backend Engineer",
   company: "Acme",
   location: "Bangalore",
@@ -68,7 +69,7 @@ describe("bot — Apply/Deny gate (Gate 1)", () => {
   });
 
   it("Apply on external job → external_sent + link reply", async () => {
-    const job = tracker.getJobByLinkedinId(db, "100")!;
+    const job = tracker.getJobBySource(db, "linkedin", "100")!;
     db.prepare("UPDATE jobs SET apply_type = 'external' WHERE id = ?").run(job.id);
     const bot = mkBot();
     await bot.onCallback(42, `apply:${appId}`);

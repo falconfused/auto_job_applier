@@ -7,7 +7,7 @@ import { checkDailyCap, detectChallenge } from "../worker/safety.js";
 import type { Posting } from "../lib/types.js";
 
 const sample: Posting = {
-  linkedinJobId: "x", title: "T", company: "C", location: "L", url: "u", applyType: "easy_apply", jdText: "",
+  sourceJobId: "x", source: "linkedin", title: "T", company: "C", location: "L", url: "u", applyType: "easy_apply", jdText: "",
 };
 
 let db: DB;
@@ -26,7 +26,7 @@ describe("checkDailyCap", () => {
 
   it("blocks when at or over cap", () => {
     for (let i = 0; i < 3; i++) {
-      const jobId = tracker.addJob(db, { ...sample, linkedinJobId: `j${i}` });
+      const jobId = tracker.addJob(db, { ...sample, sourceJobId: `j${i}` });
       const appId = tracker.createApplication(db, jobId);
       tracker.setStatus(db, appId, "applied");
     }

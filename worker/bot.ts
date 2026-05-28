@@ -39,7 +39,8 @@ function slugFor(jobId: number): string {
 
 function postingFromJobRow(job: any) {
   return {
-    linkedinJobId: job.linkedin_job_id,
+    sourceJobId: job.source_job_id,
+    source: (job.source ?? "linkedin") as "linkedin" | "internshala" | "naukri" | "wellfound" | "hirist",
     title: job.title,
     company: job.company,
     location: job.location,

@@ -5,6 +5,7 @@ import { DB_PATH, ensureDirs } from "@/lib/paths";
 import { getApplicationDetail } from "@/lib/dashboard";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ApplyButton } from "@/components/ApplyButton";
+import { StatusActions } from "@/components/StatusActions";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,7 @@ export default async function ApplicationDetailPage({
           <div className="mono-label mb-3 flex items-center gap-3">
             <span>application · {String(app.id).padStart(4, "0")}</span>
             <span className="text-[var(--paper-4)]">·</span>
-            <span>#{app.linkedin_job_id}</span>
+            <span>{app.source} · #{app.source_job_id}</span>
           </div>
           <h1 className="font-display text-[clamp(36px,5vw,64px)] font-medium leading-[0.95] tracking-[-0.02em]">
             {app.title}
@@ -92,6 +93,7 @@ export default async function ApplicationDetailPage({
       {/* actions strip */}
       <div className="mt-10 flex flex-wrap items-center gap-6">
         <ApplyButton appId={app.id} alreadyTailored={hasTailored} size="default" />
+        <StatusActions appId={app.id} status={app.status} size="default" />
 
         <a
           href={app.url}
@@ -99,7 +101,7 @@ export default async function ApplicationDetailPage({
           rel="noreferrer"
           className="link-grow mono-label hover:text-[var(--paper)]"
         >
-          open on linkedin ↗
+          open on {app.source} ↗
         </a>
 
         {hasTailored && (

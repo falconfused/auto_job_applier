@@ -11,13 +11,14 @@ describe("parseSearchHtml", () => {
     const postings = parseSearchHtml(html);
     expect(postings.length).toBeGreaterThan(0);
     for (const p of postings) {
-      expect(p.linkedinJobId).toBeTruthy();
+      expect(p.sourceJobId).toBeTruthy();
+      expect(p.source).toBe("linkedin");
       expect(p.title).toBeTruthy();
       expect(p.company).toBeTruthy();
       expect(p.url).toMatch(/^https?:\/\//);
       expect(["easy_apply", "external"]).toContain(p.applyType);
     }
-    const ids = postings.map((p) => p.linkedinJobId);
+    const ids = postings.map((p) => p.sourceJobId);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
