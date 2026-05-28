@@ -81,6 +81,20 @@ export function setResumePaths(db: DB, appId: number, resumePath: string, coverL
   ).run(resumePath, coverLetterPath, now(), appId);
 }
 
+export function setResumePath(db: DB, appId: number, resumePath: string): void {
+  db.prepare("UPDATE applications SET resume_path = ?, updated_at = ? WHERE id = ?").run(
+    resumePath,
+    now(),
+    appId,
+  );
+}
+
+export function setCoverLetterPath(db: DB, appId: number, coverLetterPath: string): void {
+  db.prepare(
+    "UPDATE applications SET cover_letter_path = ?, updated_at = ? WHERE id = ?",
+  ).run(coverLetterPath, now(), appId);
+}
+
 export function appendEditNote(db: DB, appId: number, note: string): void {
   const row = db.prepare("SELECT edit_notes FROM applications WHERE id = ?").get(appId) as
     | { edit_notes: string | null }

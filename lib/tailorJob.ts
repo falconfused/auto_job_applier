@@ -1,7 +1,7 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { tailor } from "./tailor";
+import { tailorResume, tailorCoverLetter } from "./tailor";
 import { compilePdf, pdfPageCount } from "./compile";
 import type { Posting } from "./types";
 
@@ -23,29 +23,35 @@ export interface TailorJobOpts {
   model?: string;
 }
 
-export interface TailorJobResult {
+export interface ResumeResult {
   outDir: string;
   resumeTexPath: string;
   resumePdfPath: string;
+}
+
+export interface CoverResult {
+  outDir: string;
   coverLetterTexPath: string;
   coverLetterPdfPath: string;
 }
 
+/** Combined result kept for backward compat with the existing tailorAndCompile contract. */
+export interface TailorJobResult extends ResumeResult, CoverResult {}
+
+function outDirFor(posting: Posting): string {
+  const slug = slugifyCompany(posting.company);
+  return join(TAILORED_ROOT, `${slug}-${posting.source}-${posting.sourceJobId}`);
+}
+
 /**
- * Tailor a resume + cover letter for a single posting and compile both to PDF.
- * Output goes to ~/job_applications/<company-slug>-<source>-<sourceJobId>/.
- * Including source + job id keeps multiple postings from the same company across sources separate.
+ * Tailor + compile JUST the resume. This is the primary "Apply" action — fast and
+ * cheap. The cover letter is generated lazily on a separate click.
  */
-export async function tailorAndCompile(opts: TailorJobOpts): Promise<TailorJobResult> {
-  const slug = slugifyCompany(opts.posting.company);
-  const outDir = join(
-    TAILORED_ROOT,
-    `${slug}-${opts.posting.source}-${opts.posting.sourceJobId}`,
-  );
+export async function tailorResumeOnly(opts: TailorJobOpts): Promise<ResumeResult> {
+  const outDir = outDirFor(opts.posting);
   mkdirSync(outDir, { recursive: true });
 
-  // First pass
-  let docs = await tailor({
+  let { resumeTex } = await tailorResume({
     masterTex: opts.masterTex,
     jdText: opts.posting.jdText,
     profile: opts.profile,
@@ -53,67 +59,109 @@ export async function tailorAndCompile(opts: TailorJobOpts): Promise<TailorJobRe
   });
 
   const resumeTexPath = join(outDir, "resume.tex");
-  const coverLetterTexPath = join(outDir, "cover_letter.tex");
-  writeFileSync(resumeTexPath, docs.resumeTex, "utf8");
-  writeFileSync(coverLetterTexPath, docs.coverLetterTex, "utf8");
-
+  writeFileSync(resumeTexPath, resumeTex, "utf8");
   let resumePdfPath = await compilePdf(resumeTexPath, outDir);
-  let coverLetterPdfPath = await compilePdf(coverLetterTexPath, outDir);
 
-  // Decide: over a page, or significantly under-filled?
+  // Density / page-fit retry (resume only)
   const masterWords = countWords(opts.masterTex);
-  const decision = (): "ok" | "trim" | "expand" => {
-    const resumePages = pdfPageCount(resumePdfPath);
-    const coverPages = pdfPageCount(coverLetterPdfPath);
-    if (resumePages > 1 || coverPages > 1) return "trim";
-    const tailoredWords = countWords(docs.resumeTex);
-    // If tailored is < 80% of master AND fits on 1 page → likely over-trimmed
-    if (tailoredWords < masterWords * 0.8) return "expand";
-    return "ok";
-  };
+  const pages = pdfPageCount(resumePdfPath);
+  const tailoredWords = countWords(resumeTex);
+  const action: "ok" | "trim" | "expand" =
+    pages > 1 ? "trim" : tailoredWords < masterWords * 0.8 ? "expand" : "ok";
 
-  let action = decision();
   if (action !== "ok") {
-    const resumePages = pdfPageCount(resumePdfPath);
-    const coverPages = pdfPageCount(coverLetterPdfPath);
-    const tailoredWords = countWords(docs.resumeTex);
     console.log(
-      `[tailor] retry (${action}) — resume=${resumePages}p cover=${coverPages}p ` +
-        `tailored=${tailoredWords}w master=${masterWords}w`,
+      `[tailor] retry (${action}) — resume=${pages}p tailored=${tailoredWords}w master=${masterWords}w`,
     );
-
     const editNotes =
       action === "trim"
-        ? `URGENT TRIM: previous output was resume=${resumePages} pages, cover=${coverPages} pages. ` +
-          `BOTH MUST be exactly 1 page. Drop the weakest 1-2 bullets, tighten paragraphs.`
-        : `EXPAND: the previous tailored resume was only ${tailoredWords} words versus the ` +
-          `master's ${masterWords} words — that leaves a half-empty page. Restore the missing ` +
-          `bullets and content from the master, but keep them re-worded for THIS job description. ` +
-          `The page should look full top-to-bottom. Cover letter: 3 substantive paragraphs (~300-400 words).`;
-
-    docs = await tailor({
-      // For "expand", give the model the master so it can pull missing content back.
-      masterTex: action === "trim" ? docs.resumeTex : opts.masterTex,
+        ? `URGENT TRIM: previous resume was ${pages} pages. Must be exactly 1 page. Drop the ` +
+          `weakest 1-2 bullets, tighten paragraphs.`
+        : `EXPAND: previous tailored resume was only ${tailoredWords} words vs master ${masterWords} ` +
+          `words — that leaves a half-empty page. Restore missing bullets/content from the master, ` +
+          `re-worded for THIS job description. The page should look full top-to-bottom.`;
+    const next = await tailorResume({
+      masterTex: action === "trim" ? resumeTex : opts.masterTex,
       jdText: opts.posting.jdText,
       profile: opts.profile,
       model: opts.model,
       editNotes,
     });
-    writeFileSync(resumeTexPath, docs.resumeTex, "utf8");
-    writeFileSync(coverLetterTexPath, docs.coverLetterTex, "utf8");
+    resumeTex = next.resumeTex;
+    writeFileSync(resumeTexPath, resumeTex, "utf8");
     resumePdfPath = await compilePdf(resumeTexPath, outDir);
-    coverLetterPdfPath = await compilePdf(coverLetterTexPath, outDir);
-
-    const r2 = pdfPageCount(resumePdfPath);
-    const c2 = pdfPageCount(coverLetterPdfPath);
-    const w2 = countWords(docs.resumeTex);
-    console.log(`[tailor] post-retry: resume=${r2}p cover=${c2}p tailored=${w2}w`);
-    if (r2 > 1 || c2 > 1) {
-      console.warn(`[tailor] still over 1 page after retry — keeping anyway`);
-    }
+    const p2 = pdfPageCount(resumePdfPath);
+    const w2 = countWords(resumeTex);
+    console.log(`[tailor] post-retry: resume=${p2}p tailored=${w2}w`);
+    if (p2 > 1) console.warn(`[tailor] resume still over 1 page after retry — keeping anyway`);
   }
 
-  return { outDir, resumeTexPath, resumePdfPath, coverLetterTexPath, coverLetterPdfPath };
+  return { outDir, resumeTexPath, resumePdfPath };
+}
+
+/**
+ * Tailor + compile JUST the cover letter. Requires that the resume has already been
+ * tailored (we read the tailored resume.tex and use it as additional context).
+ */
+export async function tailorCoverOnly(opts: TailorJobOpts): Promise<CoverResult> {
+  const outDir = outDirFor(opts.posting);
+  mkdirSync(outDir, { recursive: true });
+
+  // Use the tailored resume if it exists; otherwise fall back to the master.
+  const tailoredResumePath = join(outDir, "resume.tex");
+  const resumeTex = existsSync(tailoredResumePath)
+    ? readFileSync(tailoredResumePath, "utf8")
+    : opts.masterTex;
+
+  let { coverLetterTex } = await tailorCoverLetter({
+    resumeTex,
+    masterTex: opts.masterTex,
+    jdText: opts.posting.jdText,
+    profile: opts.profile,
+    model: opts.model,
+  });
+
+  const coverLetterTexPath = join(outDir, "cover_letter.tex");
+  writeFileSync(coverLetterTexPath, coverLetterTex, "utf8");
+  let coverLetterPdfPath = await compilePdf(coverLetterTexPath, outDir);
+
+  // Page-fit retry (cover letter only)
+  const pages = pdfPageCount(coverLetterPdfPath);
+  if (pages > 1) {
+    console.log(`[tailor] cover retry — was ${pages} pages`);
+    const next = await tailorCoverLetter({
+      resumeTex,
+      masterTex: opts.masterTex,
+      jdText: opts.posting.jdText,
+      profile: opts.profile,
+      model: opts.model,
+      editNotes: `TRIM: previous cover letter was ${pages} pages. Must be exactly 1 page. ` +
+        `Tighten paragraphs to ~280 words total. Drop fluff but keep specifics about company + role.`,
+    });
+    coverLetterTex = next.coverLetterTex;
+    writeFileSync(coverLetterTexPath, coverLetterTex, "utf8");
+    coverLetterPdfPath = await compilePdf(coverLetterTexPath, outDir);
+    const p2 = pdfPageCount(coverLetterPdfPath);
+    if (p2 > 1) console.warn(`[tailor] cover still over 1 page after retry — keeping anyway`);
+  }
+
+  return { outDir, coverLetterTexPath, coverLetterPdfPath };
+}
+
+/**
+ * Backward-compat wrapper: tailor BOTH resume + cover letter.
+ * Used by older code paths and tests; new flow uses tailorResumeOnly / tailorCoverOnly.
+ */
+export async function tailorAndCompile(opts: TailorJobOpts): Promise<TailorJobResult> {
+  const r = await tailorResumeOnly(opts);
+  const c = await tailorCoverOnly(opts);
+  return {
+    outDir: r.outDir,
+    resumeTexPath: r.resumeTexPath,
+    resumePdfPath: r.resumePdfPath,
+    coverLetterTexPath: c.coverLetterTexPath,
+    coverLetterPdfPath: c.coverLetterPdfPath,
+  };
 }
 
 /** Count "words" in LaTeX content — strip commands first to avoid counting \textbf etc. */

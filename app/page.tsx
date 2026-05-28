@@ -230,7 +230,7 @@ function ActiveRow({ r, i }: { r: Row; i: number }) {
 
       <div className="flex flex-col items-end gap-2">
         <ApplyButton appId={r.id} alreadyTailored={tailored} size="sm" />
-        {tailored && r.resume_path && r.cover_letter_path && (
+        {tailored && r.resume_path && (
           <DownloadButtons
             appId={r.id}
             resumePath={r.resume_path}

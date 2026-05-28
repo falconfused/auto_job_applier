@@ -36,7 +36,9 @@ export default async function ApplicationDetailPage({
   const app = getApplicationDetail(db, appId);
   if (!app) notFound();
 
-  const hasTailored = !!(app.resume_path && app.cover_letter_path);
+  const hasResume = !!app.resume_path;
+  const hasCover = !!app.cover_letter_path;
+  const hasTailored = hasResume; // resume is the primary tailored doc; cover is optional
 
   return (
     <div className="reveal">
@@ -111,11 +113,11 @@ export default async function ApplicationDetailPage({
           open on {app.source} ↗
         </a>
 
-        {hasTailored && (
+        {hasResume && (
           <DownloadButtons
             appId={app.id}
             resumePath={app.resume_path!}
-            coverLetterPath={app.cover_letter_path!}
+            coverLetterPath={app.cover_letter_path}
             size="default"
           />
         )}
@@ -131,12 +133,14 @@ export default async function ApplicationDetailPage({
             >
               Tailored Resume
             </TabsTrigger>
-            <TabsTrigger
-              value="cover"
-              className="border-b-2 border-transparent bg-transparent px-0 pb-3 font-display text-2xl italic text-[var(--paper-3)] data-[state=active]:border-[var(--violet)] data-[state=active]:text-[var(--paper)] data-[state=active]:bg-transparent"
-            >
-              Cover Letter
-            </TabsTrigger>
+            {hasCover && (
+              <TabsTrigger
+                value="cover"
+                className="border-b-2 border-transparent bg-transparent px-0 pb-3 font-display text-2xl italic text-[var(--paper-3)] data-[state=active]:border-[var(--violet)] data-[state=active]:text-[var(--paper)] data-[state=active]:bg-transparent"
+              >
+                Cover Letter
+              </TabsTrigger>
+            )}
             <TabsTrigger
               value="jd"
               className="border-b-2 border-transparent bg-transparent px-0 pb-3 font-display text-2xl italic text-[var(--paper-3)] data-[state=active]:border-[var(--violet)] data-[state=active]:text-[var(--paper)] data-[state=active]:bg-transparent"
@@ -153,15 +157,17 @@ export default async function ApplicationDetailPage({
               />
             </div>
           </TabsContent>
-          <TabsContent value="cover">
-            <div className="overflow-hidden rounded-md border border-[var(--line)] bg-[var(--ink-1)]">
-              <iframe
-                src={fileUrl(app.cover_letter_path!)}
-                className="block h-[85vh] w-full"
-                title="Cover letter"
-              />
-            </div>
-          </TabsContent>
+          {hasCover && (
+            <TabsContent value="cover">
+              <div className="overflow-hidden rounded-md border border-[var(--line)] bg-[var(--ink-1)]">
+                <iframe
+                  src={fileUrl(app.cover_letter_path!)}
+                  className="block h-[85vh] w-full"
+                  title="Cover letter"
+                />
+              </div>
+            </TabsContent>
+          )}
           <TabsContent value="jd">
             <article className="rounded-md border border-[var(--line-soft)] bg-[var(--ink-1)] p-8">
               <div className="mono-label mb-4">posting · raw</div>
