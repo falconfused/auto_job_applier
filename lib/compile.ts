@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import { mkdirSync, existsSync, rmSync } from "node:fs";
+import { mkdirSync, existsSync, rmSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
 export class CompileError extends Error {}
@@ -32,4 +32,13 @@ export async function compilePdf(
     rmSync(join(outDir, `${stem}${ext}`), { force: true });
   }
   return pdf;
+}
+
+/** Count pages in a PDF by counting "/Type /Page" objects in the raw stream. */
+export function pdfPageCount(pdfPath: string): number {
+  const buf = readFileSync(pdfPath);
+  // Most reliable for raw (unencrypted) PDFs from xelatex
+  const ascii = buf.toString("latin1");
+  const matches = ascii.match(/\/Type\s*\/Page[^s]/g);
+  return matches ? matches.length : 1;
 }

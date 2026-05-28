@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { tailor } from "./tailor";
-import { compilePdf } from "./compile";
+import { compilePdf, pdfPageCount } from "./compile";
 import type { Posting } from "./types";
 
 export const TAILORED_ROOT = join(homedir(), "job_applications");
@@ -44,7 +44,8 @@ export async function tailorAndCompile(opts: TailorJobOpts): Promise<TailorJobRe
   );
   mkdirSync(outDir, { recursive: true });
 
-  const docs = await tailor({
+  // First pass
+  let docs = await tailor({
     masterTex: opts.masterTex,
     jdText: opts.posting.jdText,
     profile: opts.profile,
@@ -56,8 +57,38 @@ export async function tailorAndCompile(opts: TailorJobOpts): Promise<TailorJobRe
   writeFileSync(resumeTexPath, docs.resumeTex, "utf8");
   writeFileSync(coverLetterTexPath, docs.coverLetterTex, "utf8");
 
-  const resumePdfPath = await compilePdf(resumeTexPath, outDir);
-  const coverLetterPdfPath = await compilePdf(coverLetterTexPath, outDir);
+  let resumePdfPath = await compilePdf(resumeTexPath, outDir);
+  let coverLetterPdfPath = await compilePdf(coverLetterTexPath, outDir);
+
+  // If either spilled to a 2nd page, retry once with explicit trim instructions
+  const resumePages = pdfPageCount(resumePdfPath);
+  const coverPages = pdfPageCount(coverLetterPdfPath);
+  if (resumePages > 1 || coverPages > 1) {
+    console.log(
+      `[tailor] retry — resume=${resumePages}p cover=${coverPages}p (target 1 page each)`,
+    );
+    docs = await tailor({
+      masterTex: docs.resumeTex, // start from the over-long version, trim it down
+      jdText: opts.posting.jdText,
+      profile: opts.profile,
+      model: opts.model,
+      editNotes:
+        `URGENT TRIM: previous output was resume=${resumePages} pages, cover=${coverPages} pages. ` +
+        `BOTH MUST be exactly 1 page. Drop the weakest 1-2 bullets, drop 1 project, ` +
+        `tighten paragraphs. Keep the strongest content for THIS job description.`,
+    });
+    writeFileSync(resumeTexPath, docs.resumeTex, "utf8");
+    writeFileSync(coverLetterTexPath, docs.coverLetterTex, "utf8");
+    resumePdfPath = await compilePdf(resumeTexPath, outDir);
+    coverLetterPdfPath = await compilePdf(coverLetterTexPath, outDir);
+    const r2 = pdfPageCount(resumePdfPath);
+    const c2 = pdfPageCount(coverLetterPdfPath);
+    if (r2 > 1 || c2 > 1) {
+      console.warn(
+        `[tailor] still over 1 page after retry: resume=${r2}p cover=${c2}p — keeping anyway`,
+      );
+    }
+  }
 
   return { outDir, resumeTexPath, resumePdfPath, coverLetterTexPath, coverLetterPdfPath };
 }

@@ -62,6 +62,9 @@ export async function runDailyPipeline(args: PipelineArgs): Promise<PipelineResu
           easyApplyOnly: settings.apply.easyApplyOnly,
         },
         internshala: settings.sources?.internshala,
+        naukri: settings.sources?.naukri,
+        unstop: settings.sources?.unstop,
+        cutshort: settings.sources?.cutshort,
       });
       newPostings = result.newPostings;
       searched = result.searched;

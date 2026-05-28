@@ -4,6 +4,7 @@ import { DB_PATH, ensureDirs } from "@/lib/paths";
 import { type AppRow } from "@/lib/dashboard";
 import { ApplyButton } from "@/components/ApplyButton";
 import { StatusActions } from "@/components/StatusActions";
+import { DownloadButtons } from "@/components/DownloadButtons";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export default function TrackerPage() {
       `SELECT a.id, a.job_id, a.status, a.resume_path, a.cover_letter_path,
               a.applied_at, a.updated_at,
               j.title, j.company, j.location, j.url, j.apply_type,
-              j.source, j.source_job_id,
+              j.source, j.source_job_id, j.salary, j.stipend,
               s.fit_score, s.fit_reason
          FROM applications a
          JOIN jobs j ON j.id = a.job_id
@@ -202,6 +203,14 @@ function ActiveRow({ r, i }: { r: Row; i: number }) {
               <span>{r.location}</span>
             </>
           )}
+          {(r.salary || r.stipend) && (
+            <>
+              <span className="mx-2 text-[var(--paper-4)]">·</span>
+              <span className="font-mono text-[12px] text-[var(--amber)]">
+                {r.salary || r.stipend}
+              </span>
+            </>
+          )}
         </div>
         {r.fit_reason && (
           <p className="mt-3 max-w-2xl text-[13px] italic leading-relaxed text-[var(--paper-3)]">
@@ -221,6 +230,14 @@ function ActiveRow({ r, i }: { r: Row; i: number }) {
 
       <div className="flex flex-col items-end gap-2">
         <ApplyButton appId={r.id} alreadyTailored={tailored} size="sm" />
+        {tailored && r.resume_path && r.cover_letter_path && (
+          <DownloadButtons
+            appId={r.id}
+            resumePath={r.resume_path}
+            coverLetterPath={r.cover_letter_path}
+            size="sm"
+          />
+        )}
         <StatusActions appId={r.id} status={r.status} size="sm" />
         <div className="font-mono text-[10px] text-[var(--paper-4)]">
           {r.source} · #{r.source_job_id.slice(0, 8)}

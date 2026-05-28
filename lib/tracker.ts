@@ -22,10 +22,22 @@ export function addJob(db: DB, p: Posting): number {
   if (existing) return existing.id;
   const info = db
     .prepare(
-      "INSERT INTO jobs (source, source_job_id, title, company, location, url, apply_type, jd_text, first_seen) " +
-        "VALUES (?,?,?,?,?,?,?,?,?)",
+      "INSERT INTO jobs (source, source_job_id, title, company, location, url, apply_type, jd_text, salary, stipend, first_seen) " +
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
     )
-    .run(p.source, p.sourceJobId, p.title, p.company, p.location, p.url, p.applyType, p.jdText, now());
+    .run(
+      p.source,
+      p.sourceJobId,
+      p.title,
+      p.company,
+      p.location,
+      p.url,
+      p.applyType,
+      p.jdText,
+      p.salary ?? null,
+      p.stipend ?? null,
+      now(),
+    );
   return Number(info.lastInsertRowid);
 }
 

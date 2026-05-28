@@ -44,9 +44,27 @@ export function parseSearchHtml(html: string): Posting[] {
 
     const applyType: ApplyType = $el.text().includes(EASY_APPLY_HINT) ? "easy_apply" : "external";
 
+    // Extract salary if visible on the card. LinkedIn surfaces this as a metadata item
+    // when the poster opted to show pay; format examples: "$80K/yr - $120K/yr", "₹4-8 LPA".
+    const cardText = $el.text();
+    const salaryMatch =
+      cardText.match(/[₹$€£][\d,.]+\s*(?:K|L|LPA|LACS?|Cr|M)?\s*[-–]\s*[₹$€£]?[\d,.]+\s*(?:K|L|LPA|LACS?|Cr|M)?(?:\s*\/\s*\w+)?/i) ||
+      cardText.match(/[₹$][\d,]+\s*(?:K|L|LPA)?\s*\/\s*(?:yr|hr|month|year)/i);
+    const salary = salaryMatch?.[0]?.trim() || undefined;
+
     if (!title || !company) return;
     seen.add(sourceJobId);
-    out.push({ sourceJobId, source: "linkedin", title, company, location, url, applyType, jdText: "" });
+    out.push({
+      sourceJobId,
+      source: "linkedin",
+      title,
+      company,
+      location,
+      url,
+      applyType,
+      jdText: "",
+      ...(salary ? { salary } : {}),
+    });
   });
 
   return out;

@@ -20,12 +20,47 @@ const InternshalaFilter = z.object({
   keywords: z.string().optional(),
 });
 
+const NaukriFilter = z.object({
+  keywords: z.string(),
+  location: z.string(),
+  experience: z.string().optional(),
+});
+
+const UnstopFilter = z.object({
+  type: z.enum(["jobs", "internships"]),
+  category: z.string().optional(),
+  location: z.string().optional(),
+});
+
+const CutshortFilter = z.object({
+  role: z.string().optional(),
+  location: z.string().optional(),
+});
+
 const SourcesSchema = z
   .object({
     internshala: z
       .object({
         enabled: z.boolean().default(false),
         filters: z.array(InternshalaFilter).default([]),
+      })
+      .optional(),
+    naukri: z
+      .object({
+        enabled: z.boolean().default(false),
+        filters: z.array(NaukriFilter).default([]),
+      })
+      .optional(),
+    unstop: z
+      .object({
+        enabled: z.boolean().default(false),
+        filters: z.array(UnstopFilter).default([]),
+      })
+      .optional(),
+    cutshort: z
+      .object({
+        enabled: z.boolean().default(false),
+        filters: z.array(CutshortFilter).default([]),
       })
       .optional(),
   })

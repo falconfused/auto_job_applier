@@ -5,6 +5,9 @@ import { buildSearchUrl } from "./searchUrl.js";
 import { parseSearchHtml } from "./parseSearch.js";
 import { launchSession, fetchHtml as realFetchHtml } from "./session.js";
 import { buildInternshalaUrl, parseInternshalaHtml } from "./sources/internshala.js";
+import { buildNaukriUrl, parseNaukriHtml } from "./sources/naukri.js";
+import { buildUnstopUrl, parseUnstopHtml } from "./sources/unstop.js";
+import { buildCutshortUrl, parseCutshortHtml } from "./sources/cutshort.js";
 
 interface FilterLike {
   keywords: string;
@@ -50,6 +53,23 @@ interface InternshalaFilter {
   keywords?: string;
 }
 
+interface NaukriFilter {
+  keywords: string;
+  location: string;
+  experience?: string;
+}
+
+interface UnstopFilter {
+  type: "jobs" | "internships";
+  category?: string;
+  location?: string;
+}
+
+interface CutshortFilter {
+  role?: string;
+  location?: string;
+}
+
 interface IngestSourcesArgs {
   db: DB;
   fetchHtml: (url: string) => Promise<string>;
@@ -61,10 +81,25 @@ interface IngestSourcesArgs {
     enabled: boolean;
     filters: InternshalaFilter[];
   };
+  naukri?: {
+    enabled: boolean;
+    filters: NaukriFilter[];
+  };
+  unstop?: {
+    enabled: boolean;
+    filters: UnstopFilter[];
+  };
+  cutshort?: {
+    enabled: boolean;
+    filters: CutshortFilter[];
+  };
   /** Test hooks. */
   parsers?: {
     linkedin?: (html: string) => Posting[];
     internshala?: (html: string, type: "internship" | "job") => Posting[];
+    naukri?: (html: string) => Posting[];
+    unstop?: (html: string, type: "jobs" | "internships") => Posting[];
+    cutshort?: (html: string) => Posting[];
   };
 }
 
@@ -79,6 +114,9 @@ export async function ingestSources(args: IngestSourcesArgs): Promise<{
 
   const lkParse = args.parsers?.linkedin ?? parseSearchHtml;
   const isParse = args.parsers?.internshala ?? parseInternshalaHtml;
+  const nkParse = args.parsers?.naukri ?? parseNaukriHtml;
+  const usParse = args.parsers?.unstop ?? parseUnstopHtml;
+  const csParse = args.parsers?.cutshort ?? parseCutshortHtml;
 
   // LinkedIn
   if (args.linkedin && args.linkedin.filters.length > 0) {
@@ -110,6 +148,54 @@ export async function ingestSources(args: IngestSourcesArgs): Promise<{
         console.warn(
           `[ingest] internshala filter failed (${filter.type}/${filter.category ?? ""}/${filter.location ?? ""}): ${(err as Error).message}`,
         );
+      }
+    }
+  }
+
+  // Naukri
+  if (args.naukri?.enabled && args.naukri.filters.length > 0) {
+    for (const filter of args.naukri.filters) {
+      const url = buildNaukriUrl(filter);
+      searched += 1;
+      try {
+        const html = await args.fetchHtml(url);
+        for (const p of nkParse(html)) {
+          if (commitPosting(args.db, p, seenThisRun)) newPostings.push(p);
+        }
+      } catch (err) {
+        console.warn(`[ingest] naukri filter failed: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  // Unstop
+  if (args.unstop?.enabled && args.unstop.filters.length > 0) {
+    for (const filter of args.unstop.filters) {
+      const url = buildUnstopUrl(filter);
+      searched += 1;
+      try {
+        const html = await args.fetchHtml(url);
+        for (const p of usParse(html, filter.type)) {
+          if (commitPosting(args.db, p, seenThisRun)) newPostings.push(p);
+        }
+      } catch (err) {
+        console.warn(`[ingest] unstop filter failed: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  // Cutshort
+  if (args.cutshort?.enabled && args.cutshort.filters.length > 0) {
+    for (const filter of args.cutshort.filters) {
+      const url = buildCutshortUrl(filter);
+      searched += 1;
+      try {
+        const html = await args.fetchHtml(url);
+        for (const p of csParse(html)) {
+          if (commitPosting(args.db, p, seenThisRun)) newPostings.push(p);
+        }
+      } catch (err) {
+        console.warn(`[ingest] cutshort filter failed: ${(err as Error).message}`);
       }
     }
   }

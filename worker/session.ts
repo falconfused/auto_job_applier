@@ -26,6 +26,12 @@ export async function launchSession(opts: { headless?: boolean } = {}): Promise<
     });
   }
 
+  // Stealth: Naukri (and others) block sessions where navigator.webdriver === true.
+  // Mask it before any page loads.
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+  });
+
   // Inject LI_AT cookie if available — typically enough on its own.
   const liAt = process.env.LI_AT?.trim();
   if (liAt) {

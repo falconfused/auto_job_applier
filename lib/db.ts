@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   title TEXT, company TEXT, location TEXT, url TEXT,
   apply_type TEXT NOT NULL,
   jd_text TEXT DEFAULT '',
+  salary TEXT,
+  stipend TEXT,
   first_seen TEXT NOT NULL,
   UNIQUE (source, source_job_id)
 );
@@ -56,5 +58,12 @@ export function migrate(db: DB): void {
       ALTER TABLE jobs RENAME COLUMN linkedin_job_id TO source_job_id;
       ALTER TABLE jobs ADD COLUMN source TEXT NOT NULL DEFAULT 'linkedin';
     `);
+  }
+  // v2 → v3 migration: add salary + stipend (nullable, additive).
+  if (!colNames.has("salary")) {
+    db.exec(`ALTER TABLE jobs ADD COLUMN salary TEXT`);
+  }
+  if (!colNames.has("stipend")) {
+    db.exec(`ALTER TABLE jobs ADD COLUMN stipend TEXT`);
   }
 }

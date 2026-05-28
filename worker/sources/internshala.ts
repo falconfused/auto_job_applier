@@ -67,6 +67,10 @@ export function parseInternshalaHtml(
 
     const jdText = $el.find(".about_job .text").first().text().replace(/\s+/g, " ").trim();
 
+    // Stipend (internships) or salary (jobs) — both render under .stipend
+    const payText = $el.find(".stipend").first().text().replace(/\s+/g, " ").trim();
+    const isInternship = type === "internship";
+
     if (!title || !company) return;
     seen.add(sourceJobId);
     out.push({
@@ -80,6 +84,8 @@ export function parseInternshalaHtml(
       // since we'll click through and apply on their portal.
       applyType: "external",
       jdText,
+      ...(payText && isInternship ? { stipend: payText } : {}),
+      ...(payText && !isInternship ? { salary: payText } : {}),
     });
   });
 

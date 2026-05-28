@@ -6,6 +6,7 @@ import { getApplicationDetail } from "@/lib/dashboard";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ApplyButton } from "@/components/ApplyButton";
 import { StatusActions } from "@/components/StatusActions";
+import { DownloadButtons } from "@/components/DownloadButtons";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,12 @@ export default async function ApplicationDetailPage({
               </>
             )}
           </div>
+          {(app.salary || app.stipend) && (
+            <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-[var(--amber)] px-3 py-1 font-mono text-[12px] text-[var(--amber)]">
+              <span className="opacity-60">{app.stipend ? "stipend" : "salary"}</span>
+              <span>{app.salary || app.stipend}</span>
+            </div>
+          )}
         </div>
 
         {/* fit score block */}
@@ -105,24 +112,12 @@ export default async function ApplicationDetailPage({
         </a>
 
         {hasTailored && (
-          <>
-            <a
-              href={fileUrl(app.resume_path!)}
-              target="_blank"
-              rel="noreferrer"
-              className="link-grow mono-label hover:text-[var(--violet)]"
-            >
-              download resume.pdf ↓
-            </a>
-            <a
-              href={fileUrl(app.cover_letter_path!)}
-              target="_blank"
-              rel="noreferrer"
-              className="link-grow mono-label hover:text-[var(--violet)]"
-            >
-              download cover_letter.pdf ↓
-            </a>
-          </>
+          <DownloadButtons
+            appId={app.id}
+            resumePath={app.resume_path!}
+            coverLetterPath={app.cover_letter_path!}
+            size="default"
+          />
         )}
       </div>
 

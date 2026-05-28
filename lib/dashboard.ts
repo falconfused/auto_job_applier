@@ -15,6 +15,8 @@ export interface AppRow {
   apply_type: string;
   source: string;
   source_job_id: string;
+  salary: string | null;
+  stipend: string | null;
 }
 
 export function listApplications(db: DB): AppRow[] {
@@ -22,7 +24,8 @@ export function listApplications(db: DB): AppRow[] {
     .prepare(
       `SELECT a.id, a.job_id, a.status, a.resume_path, a.cover_letter_path,
               a.applied_at, a.updated_at,
-              j.title, j.company, j.location, j.url, j.apply_type, j.source, j.source_job_id
+              j.title, j.company, j.location, j.url, j.apply_type,
+              j.source, j.source_job_id, j.salary, j.stipend
          FROM applications a
          JOIN jobs j ON j.id = a.job_id
          ORDER BY a.updated_at DESC`,
@@ -57,7 +60,7 @@ export function getApplicationDetail(db: DB, appId: number): AppDetail | undefin
       `SELECT a.id, a.job_id, a.status, a.resume_path, a.cover_letter_path,
               a.applied_at, a.updated_at,
               j.title, j.company, j.location, j.url, j.apply_type,
-              j.source, j.source_job_id, j.jd_text,
+              j.source, j.source_job_id, j.salary, j.stipend, j.jd_text,
               s.fit_score, s.fit_reason, s.rank
          FROM applications a
          JOIN jobs j ON j.id = a.job_id

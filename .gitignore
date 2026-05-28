@@ -1,7 +1,7 @@
 node_modules/
 .next/
 dist/
-data/*.db
+data/
 browser_profile/
 config/settings.yaml
 config/profile.json
@@ -11,6 +11,9 @@ resume/jobs/
 *.log
 tests/fixtures/linkedin_search.html
 tests/fixtures/internshala_search.html
+tests/fixtures/naukri_search.html
+tests/fixtures/cutshort_search.html
+tests/fixtures/unstop_search.html
 
 # typescript incremental build cache
 *.tsbuildinfo
