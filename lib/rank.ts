@@ -2,10 +2,16 @@ import { completeJson, type CompleteJson } from "./llm.js";
 import type { Posting, ScoredPosting } from "./types.js";
 
 const SYSTEM =
-  "You are a career-fit ranker. Given a candidate's resume/profile and a list of job " +
-  "postings, score each posting 0-100 for how well it fits the candidate and give a " +
-  'one-line reason. Respond ONLY as JSON: {"rankings": [{"linkedinJobId": "<id>", ' +
-  '"fitScore": <0-100>, "fitReason": "<one line>"}]}';
+  "You are a career-fit ranker. Given a candidate's resume, profile, and a list of job " +
+  "postings, score each posting 0-100 for how well it fits THIS candidate.\n\n" +
+  "CRITICAL: The candidate's profile contains a `ranking_preferences` field with HARD " +
+  "constraints (auto-skip rules) and STRONG preferences. You MUST obey these — they " +
+  "override generic skill matching. If a posting violates a hard constraint (e.g. " +
+  "requires work experience the candidate doesn't have, or has a senior-level title), " +
+  "score it 0-15 even if the skills match perfectly.\n\n" +
+  "Also weight target_roles, preferred_locations, and preferred_regions from the profile.\n\n" +
+  "Respond ONLY as JSON: " +
+  '{"rankings": [{"linkedinJobId": "<id>", "fitScore": <0-100>, "fitReason": "<one line>"}]}';
 
 interface RankOpts {
   resumeText: string;

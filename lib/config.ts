@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
-import { SETTINGS_PATH, PROFILE_PATH } from "./paths.js";
+import { SETTINGS_PATH, PROFILE_PATH } from "./paths";
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 

@@ -1,5 +1,5 @@
-import { completeJson, type CompleteJson } from "./llm.js";
-import type { TailoredDocs } from "./types.js";
+import { completeJson, type CompleteJson } from "./llm";
+import type { TailoredDocs } from "./types";
 
 const SYSTEM =
   "You are a resume tailor. You receive a LaTeX master resume, a job description, the " +
