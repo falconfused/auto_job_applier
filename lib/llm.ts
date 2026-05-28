@@ -1,10 +1,12 @@
-import Anthropic from "@anthropic-ai/sdk";
+import AnthropicBedrock from "@anthropic-ai/bedrock-sdk";
 
 export type CompleteJson = (system: string, user: string, opts?: { model?: string }) => Promise<any>;
 
-let client: Anthropic | null = null;
-function getClient(): Anthropic {
-  if (!client) client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const DEFAULT_MODEL = process.env.BEDROCK_MODEL_ID ?? "us.anthropic.claude-sonnet-4-6-v1:0";
+
+let client: AnthropicBedrock | null = null;
+function getClient(): AnthropicBedrock {
+  if (!client) client = new AnthropicBedrock();
   return client;
 }
 
@@ -16,13 +18,15 @@ function extractJson(text: string): any {
   try {
     return JSON.parse(body);
   } catch (err) {
-    throw new Error(`llm: failed to parse JSON response (${(err as Error).message}); got: ${body.slice(0, 300)}`);
+    throw new Error(
+      `llm: failed to parse JSON response (${(err as Error).message}); got: ${body.slice(0, 300)}`,
+    );
   }
 }
 
-/** Send a system+user prompt and parse the reply as JSON. */
+/** Send a system+user prompt to Claude on AWS Bedrock and parse the reply as JSON. */
 export const completeJson: CompleteJson = async (system, user, opts) => {
-  const model = opts?.model ?? "claude-sonnet-4-6";
+  const model = opts?.model ?? DEFAULT_MODEL;
   const resp = await getClient().messages.create({
     model,
     max_tokens: 4096,
