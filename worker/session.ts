@@ -32,7 +32,10 @@ export async function launchSession(opts: { headless?: boolean } = {}): Promise<
   });
 }
 
-/** Navigate to a URL in the persistent session and return the page's HTML. Caller closes the context. */
+/** Navigate to a URL in the persistent session and return the page's HTML.
+ * If the page looks like a LinkedIn jobs search results page, scroll several times
+ * to trigger lazy-loaded additional job cards before snapshotting the HTML.
+ * Caller closes the context. */
 export async function fetchHtml(context: BrowserContext, url: string, waitSelector?: string): Promise<string> {
   const page: Page = await context.newPage();
   try {
@@ -40,7 +43,38 @@ export async function fetchHtml(context: BrowserContext, url: string, waitSelect
     if (waitSelector) {
       await page.waitForSelector(waitSelector, { timeout: 30000 }).catch(() => {});
     }
-    await page.waitForTimeout(1500 + Math.random() * 1500); // human-like settle
+    await page.waitForTimeout(1500 + Math.random() * 1500);
+
+    // Lazy-load more cards if this is a jobs results page. Find the actual scrollable
+    // container by detecting overflow + a job-card descendant (LinkedIn's class names are
+    // randomized A/B test markers, so structural detection is more reliable than selectors).
+    const isJobsResults = await page.evaluate(() => !!document.querySelector(".job-card-container"));
+    if (isJobsResults) {
+      let stable = 0;
+      let last = 0;
+      for (let i = 0; i < 15; i++) {
+        await page.evaluate(() => {
+          const cards = document.querySelectorAll(".job-card-container");
+          if (cards.length) (cards[cards.length - 1] as HTMLElement).scrollIntoView({ block: "end" });
+          const scrollable = (Array.from(document.querySelectorAll("*")) as HTMLElement[]).filter((el) => {
+            const cs = getComputedStyle(el);
+            return (cs.overflowY === "auto" || cs.overflowY === "scroll") && el.querySelector(".job-card-container");
+          });
+          for (const el of scrollable) el.scrollTop = el.scrollHeight;
+          window.scrollTo(0, document.body.scrollHeight);
+        });
+        await page.waitForTimeout(900 + Math.random() * 400);
+        const count = await page.evaluate(() => document.querySelectorAll(".job-card-container").length);
+        if (count === last) {
+          stable += 1;
+          if (stable >= 3) break; // 3 consecutive no-growth scrolls → done
+        } else {
+          stable = 0;
+          last = count;
+        }
+      }
+    }
+
     return await page.content();
   } finally {
     await page.close();

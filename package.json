@@ -14,6 +14,7 @@
     "ingest": "tsx worker/ingest.ts",
     "worker": "tsx worker/index.ts",
     "pipeline:once": "tsx worker/runOnce.ts",
+    "smoke": "tsx worker/smoke.ts",
     "dev": "next dev",
     "build": "next build",
     "start": "next start"

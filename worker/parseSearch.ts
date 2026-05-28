@@ -5,7 +5,7 @@ import type { Posting, ApplyType } from "../lib/types.js";
 const CARD = "div.job-card-container, li.jobs-search-results__list-item, div.base-card";
 const TITLE = ".job-card-list__title, .base-search-card__title, a.job-card-container__link";
 const COMPANY = ".job-card-container__primary-description, .base-search-card__subtitle, .artdeco-entity-lockup__subtitle";
-const LOCATION = ".job-card-container__metadata-item, .job-search-card__location";
+const LOCATION = ".artdeco-entity-lockup__caption ul.job-card-container__metadata-wrapper li, .job-card-container__metadata-wrapper li, .job-card-container__metadata-item, .job-search-card__location";
 const LINK = "a.job-card-container__link, a.base-card__full-link";
 const EASY_APPLY_HINT = "Easy Apply";
 
