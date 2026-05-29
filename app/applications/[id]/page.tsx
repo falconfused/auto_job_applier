@@ -21,6 +21,15 @@ function fitTone(score: number | null) {
   return "var(--paper-3)";
 }
 
+function seenLabel(iso: string): string {
+  const days = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 86_400_000));
+  if (days === 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days <= 14) return `${days}d ago`;
+  if (days <= 29) return `${days}d ago`;
+  return "30+d ago";
+}
+
 export default async function ApplicationDetailPage({
   params,
 }: {
@@ -54,6 +63,8 @@ export default async function ApplicationDetailPage({
             <span>application · {String(app.id).padStart(4, "0")}</span>
             <span className="text-[var(--paper-4)]">·</span>
             <span>{app.source} · #{app.source_job_id}</span>
+            <span className="text-[var(--paper-4)]">·</span>
+            <span>seen {seenLabel(app.first_seen)}</span>
           </div>
           <h1 className="font-display text-[clamp(36px,5vw,64px)] font-medium leading-[0.95] tracking-[-0.02em]">
             {app.title}

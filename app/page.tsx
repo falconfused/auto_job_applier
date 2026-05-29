@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 interface Row extends AppRow {
   fit_score: number | null;
   fit_reason: string | null;
+  first_seen: string;
 }
 
 function fitBand(score: number | null): { word: string; tone: string } {
@@ -19,6 +20,36 @@ function fitBand(score: number | null): { word: string; tone: string } {
   if (score >= 65) return { word: "good", tone: "var(--amber)" };
   if (score >= 50) return { word: "weak", tone: "var(--paper-3)" };
   return { word: "skip", tone: "var(--paper-4)" };
+}
+
+/** Days since first seen, rounded to nearest day (≥0). */
+function daysSince(iso: string): number {
+  const ms = Date.now() - new Date(iso).getTime();
+  return Math.max(0, Math.round(ms / 86_400_000));
+}
+
+/**
+ * Recency-adjusted fit score. Caps the freshness penalty at 30 points
+ * (i.e. a 30+ day old posting loses ~30% of its fit score). Linear ramp
+ * from 0 → 30 days.
+ */
+function freshScore(rawScore: number | null, firstSeen: string): number {
+  if (rawScore == null) return 0;
+  const days = daysSince(firstSeen);
+  // 1% per day, capped at 30%
+  const penalty = Math.min(days, 30);
+  return Math.max(0, rawScore - penalty);
+}
+
+/** Short freshness label: "today", "1d", "7d", "30d+". */
+function freshLabel(firstSeen: string): { text: string; tone: string } {
+  const d = daysSince(firstSeen);
+  if (d === 0) return { text: "today", tone: "var(--jade)" };
+  if (d <= 2) return { text: `${d}d`, tone: "var(--jade)" };
+  if (d <= 7) return { text: `${d}d`, tone: "var(--paper-2)" };
+  if (d <= 14) return { text: `${d}d`, tone: "var(--paper-3)" };
+  if (d <= 29) return { text: `${d}d`, tone: "var(--paper-4)" };
+  return { text: "30d+", tone: "var(--paper-4)" };
 }
 
 const ACTIVE_STATUSES = new Set(["suggested", "tailoring", "awaiting_submit", "external_sent", "failed"]);
@@ -33,22 +64,32 @@ export default function TrackerPage() {
       `SELECT a.id, a.job_id, a.status, a.resume_path, a.cover_letter_path,
               a.applied_at, a.updated_at,
               j.title, j.company, j.location, j.url, j.apply_type,
-              j.source, j.source_job_id, j.salary, j.stipend,
+              j.source, j.source_job_id, j.salary, j.stipend, j.first_seen,
               s.fit_score, s.fit_reason
          FROM applications a
          JOIN jobs j ON j.id = a.job_id
          LEFT JOIN suggestions s
            ON s.job_id = j.id
-          AND s.id = (SELECT MAX(id) FROM suggestions WHERE job_id = j.id)
-         ORDER BY COALESCE(s.fit_score, 0) DESC, a.updated_at DESC`,
+          AND s.id = (SELECT MAX(id) FROM suggestions WHERE job_id = j.id)`,
     )
     .all() as Row[];
+
+  // Sort by freshness-adjusted fit score (recent good fits beat stale strong ones).
+  rows.sort((a, b) => {
+    const sa = freshScore(a.fit_score, a.first_seen);
+    const sb = freshScore(b.fit_score, b.first_seen);
+    if (sb !== sa) return sb - sa;
+    // Tie-break: more recent first_seen wins
+    return new Date(b.first_seen).getTime() - new Date(a.first_seen).getTime();
+  });
 
   const active = rows.filter((r) => ACTIVE_STATUSES.has(r.status));
   const applied = rows.filter((r) => r.status === "applied");
   const dismissed = rows.filter((r) => r.status === "dismissed" || r.status === "cancelled");
 
   const tailoredCount = active.filter((r) => !!r.resume_path).length;
+  // "Strong fit" still uses RAW score, not freshness-adjusted — recency is a sort tiebreaker,
+  // not a re-grading. A 90/strong from 60 days ago is still a strong-fit job, just deprioritized.
   const strongCount = active.filter((r) => (r.fit_score ?? 0) >= 80).length;
 
   return (
@@ -164,6 +205,7 @@ function SectionHeader({ label, count, tone }: { label: string; count: number; t
 function ActiveRow({ r, i }: { r: Row; i: number }) {
   const fit = fitBand(r.fit_score);
   const tailored = !!r.resume_path;
+  const fresh = freshLabel(r.first_seen);
   return (
     <article
       className="reveal group grid grid-cols-[1fr_auto_220px] items-center gap-8 border-b border-[var(--line-soft)] py-7 transition-colors hover:bg-[var(--ink-1)]"
@@ -176,6 +218,8 @@ function ActiveRow({ r, i }: { r: Row; i: number }) {
           <span>{r.source}</span>
           <span className="text-[var(--paper-4)]">·</span>
           <span>{r.apply_type === "easy_apply" ? "easy apply" : "external"}</span>
+          <span className="text-[var(--paper-4)]">·</span>
+          <span style={{ color: fresh.tone }}>{fresh.text}</span>
           {tailored && (
             <>
               <span className="text-[var(--paper-4)]">·</span>
