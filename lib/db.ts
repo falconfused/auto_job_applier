@@ -5,11 +5,15 @@ export type DB = Database.Database;
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  linkedin_job_id TEXT UNIQUE NOT NULL,
+  source TEXT NOT NULL DEFAULT 'linkedin',
+  source_job_id TEXT NOT NULL,
   title TEXT, company TEXT, location TEXT, url TEXT,
   apply_type TEXT NOT NULL,
   jd_text TEXT DEFAULT '',
-  first_seen TEXT NOT NULL
+  salary TEXT,
+  stipend TEXT,
+  first_seen TEXT NOT NULL,
+  UNIQUE (source, source_job_id)
 );
 CREATE TABLE IF NOT EXISTS suggestions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,6 +44,26 @@ export function openDb(path = ":memory:"): DB {
   return db;
 }
 
+/**
+ * Idempotent migration: creates the schema, and upgrades any pre-existing v1 DB
+ * (which had `jobs.linkedin_job_id`) to the multi-source v2 shape.
+ */
 export function migrate(db: DB): void {
   db.exec(SCHEMA);
+  // v1 → v2 migration: rename linkedin_job_id → source_job_id and add source column.
+  const cols = db.prepare("PRAGMA table_info(jobs)").all() as { name: string }[];
+  const colNames = new Set(cols.map((c) => c.name));
+  if (colNames.has("linkedin_job_id") && !colNames.has("source_job_id")) {
+    db.exec(`
+      ALTER TABLE jobs RENAME COLUMN linkedin_job_id TO source_job_id;
+      ALTER TABLE jobs ADD COLUMN source TEXT NOT NULL DEFAULT 'linkedin';
+    `);
+  }
+  // v2 → v3 migration: add salary + stipend (nullable, additive).
+  if (!colNames.has("salary")) {
+    db.exec(`ALTER TABLE jobs ADD COLUMN salary TEXT`);
+  }
+  if (!colNames.has("stipend")) {
+    db.exec(`ALTER TABLE jobs ADD COLUMN stipend TEXT`);
+  }
 }

@@ -4,7 +4,8 @@ import type { Posting } from "../lib/types.js";
 
 function postings(n: number): Posting[] {
   return Array.from({ length: n }, (_, i) => ({
-    linkedinJobId: String(i),
+    sourceJobId: String(i),
+    source: "linkedin" as const,
     title: `Job ${i}`,
     company: "Acme",
     location: "Bangalore",
@@ -18,20 +19,20 @@ describe("rank", () => {
   it("returns top-N sorted by fitScore desc", async () => {
     const complete = async () => ({
       rankings: Array.from({ length: 5 }, (_, i) => ({
-        linkedinJobId: String(i),
+        sourceJobId: String(i),
         fitScore: i * 10,
         fitReason: `reason ${i}`,
       })),
     });
     const result = await rank(postings(5), { resumeText: "x", profile: {}, topN: 3, complete });
-    expect(result.map((r) => r.posting.linkedinJobId)).toEqual(["4", "3", "2"]);
+    expect(result.map((r) => r.posting.sourceJobId)).toEqual(["4", "3", "2"]);
     expect(result[0].fitScore).toBe(40);
     expect(result[0].fitReason).toBe("reason 4");
   });
 
   it("ignores unknown ids returned by the model", async () => {
     const complete = async () => ({
-      rankings: [{ linkedinJobId: "999", fitScore: 99, fitReason: "ghost" }],
+      rankings: [{ sourceJobId: "999", fitScore: 99, fitReason: "ghost" }],
     });
     const result = await rank(postings(2), { resumeText: "x", profile: {}, topN: 5, complete });
     expect(result).toEqual([]);
@@ -46,5 +47,14 @@ describe("rank", () => {
     const result = await rank([], { resumeText: "x", profile: {}, topN: 5, complete });
     expect(result).toEqual([]);
     expect(called).toBe(false);
+  });
+
+  it("accepts legacy linkedinJobId field for backward compat", async () => {
+    const complete = async () => ({
+      rankings: [{ linkedinJobId: "1", fitScore: 50, fitReason: "legacy" }],
+    });
+    const result = await rank(postings(2), { resumeText: "x", profile: {}, topN: 5, complete });
+    expect(result.length).toBe(1);
+    expect(result[0].posting.sourceJobId).toBe("1");
   });
 });

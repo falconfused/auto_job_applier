@@ -17,22 +17,38 @@ const now = () => new Date().toISOString();
 
 export function addJob(db: DB, p: Posting): number {
   const existing = db
-    .prepare("SELECT id FROM jobs WHERE linkedin_job_id = ?")
-    .get(p.linkedinJobId) as { id: number } | undefined;
+    .prepare("SELECT id FROM jobs WHERE source = ? AND source_job_id = ?")
+    .get(p.source, p.sourceJobId) as { id: number } | undefined;
   if (existing) return existing.id;
   const info = db
     .prepare(
-      "INSERT INTO jobs (linkedin_job_id, title, company, location, url, apply_type, jd_text, first_seen) " +
-        "VALUES (?,?,?,?,?,?,?,?)",
+      "INSERT INTO jobs (source, source_job_id, title, company, location, url, apply_type, jd_text, salary, stipend, first_seen) " +
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
     )
-    .run(p.linkedinJobId, p.title, p.company, p.location, p.url, p.applyType, p.jdText, now());
+    .run(
+      p.source,
+      p.sourceJobId,
+      p.title,
+      p.company,
+      p.location,
+      p.url,
+      p.applyType,
+      p.jdText,
+      p.salary ?? null,
+      p.stipend ?? null,
+      now(),
+    );
   return Number(info.lastInsertRowid);
 }
 
-export function getJobByLinkedinId(db: DB, linkedinJobId: string): Record<string, any> | undefined {
-  return db.prepare("SELECT * FROM jobs WHERE linkedin_job_id = ?").get(linkedinJobId) as
-    | Record<string, any>
-    | undefined;
+export function getJobBySource(
+  db: DB,
+  source: string,
+  sourceJobId: string,
+): Record<string, any> | undefined {
+  return db
+    .prepare("SELECT * FROM jobs WHERE source = ? AND source_job_id = ?")
+    .get(source, sourceJobId) as Record<string, any> | undefined;
 }
 
 export function createApplication(db: DB, jobId: number): number {
@@ -65,6 +81,20 @@ export function setResumePaths(db: DB, appId: number, resumePath: string, coverL
   ).run(resumePath, coverLetterPath, now(), appId);
 }
 
+export function setResumePath(db: DB, appId: number, resumePath: string): void {
+  db.prepare("UPDATE applications SET resume_path = ?, updated_at = ? WHERE id = ?").run(
+    resumePath,
+    now(),
+    appId,
+  );
+}
+
+export function setCoverLetterPath(db: DB, appId: number, coverLetterPath: string): void {
+  db.prepare(
+    "UPDATE applications SET cover_letter_path = ?, updated_at = ? WHERE id = ?",
+  ).run(coverLetterPath, now(), appId);
+}
+
 export function appendEditNote(db: DB, appId: number, note: string): void {
   const row = db.prepare("SELECT edit_notes FROM applications WHERE id = ?").get(appId) as
     | { edit_notes: string | null }
@@ -76,6 +106,27 @@ export function appendEditNote(db: DB, appId: number, note: string): void {
     now(),
     appId,
   );
+}
+
+/** Return all jobs that have never received a suggestion (= never been ranked). */
+export function getUnrankedJobs(db: DB): Posting[] {
+  const rows = db
+    .prepare(
+      `SELECT j.* FROM jobs j
+        LEFT JOIN suggestions s ON s.job_id = j.id
+        WHERE s.id IS NULL`,
+    )
+    .all() as any[];
+  return rows.map((r) => ({
+    sourceJobId: r.source_job_id,
+    source: r.source,
+    title: r.title,
+    company: r.company,
+    location: r.location,
+    url: r.url,
+    applyType: r.apply_type,
+    jdText: r.jd_text || "",
+  }));
 }
 
 export function addSuggestion(

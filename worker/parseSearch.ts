@@ -32,21 +32,39 @@ export function parseSearchHtml(html: string): Posting[] {
 
   $(CARD).each((_, el) => {
     const $el = $(el);
-    const linkedinJobId = jobIdOf($, el);
-    if (!linkedinJobId || seen.has(linkedinJobId)) return;
+    const sourceJobId = jobIdOf($, el);
+    if (!sourceJobId || seen.has(sourceJobId)) return;
 
     const title = text($el.find(TITLE));
     const company = text($el.find(COMPANY));
     const location = text($el.find(LOCATION));
     let url = $el.find(LINK).first().attr("href") || "";
     if (url.startsWith("/")) url = "https://www.linkedin.com" + url;
-    if (!url) url = `https://www.linkedin.com/jobs/view/${linkedinJobId}`;
+    if (!url) url = `https://www.linkedin.com/jobs/view/${sourceJobId}`;
 
     const applyType: ApplyType = $el.text().includes(EASY_APPLY_HINT) ? "easy_apply" : "external";
 
+    // Extract salary if visible on the card. LinkedIn surfaces this as a metadata item
+    // when the poster opted to show pay; format examples: "$80K/yr - $120K/yr", "₹4-8 LPA".
+    const cardText = $el.text();
+    const salaryMatch =
+      cardText.match(/[₹$€£][\d,.]+\s*(?:K|L|LPA|LACS?|Cr|M)?\s*[-–]\s*[₹$€£]?[\d,.]+\s*(?:K|L|LPA|LACS?|Cr|M)?(?:\s*\/\s*\w+)?/i) ||
+      cardText.match(/[₹$][\d,]+\s*(?:K|L|LPA)?\s*\/\s*(?:yr|hr|month|year)/i);
+    const salary = salaryMatch?.[0]?.trim() || undefined;
+
     if (!title || !company) return;
-    seen.add(linkedinJobId);
-    out.push({ linkedinJobId, title, company, location, url, applyType, jdText: "" });
+    seen.add(sourceJobId);
+    out.push({
+      sourceJobId,
+      source: "linkedin",
+      title,
+      company,
+      location,
+      url,
+      applyType,
+      jdText: "",
+      ...(salary ? { salary } : {}),
+    });
   });
 
   return out;

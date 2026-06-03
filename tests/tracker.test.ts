@@ -4,7 +4,8 @@ import * as tracker from "../lib/tracker.js";
 import type { Posting } from "../lib/types.js";
 
 const sample: Posting = {
-  linkedinJobId: "123",
+  sourceJobId: "123",
+  source: "linkedin",
   title: "Backend Engineer",
   company: "Acme",
   location: "Bangalore",
@@ -20,15 +21,15 @@ beforeEach(() => {
 });
 
 describe("tracker", () => {
-  it("addJob is idempotent on linkedinJobId", () => {
+  it("addJob is idempotent on sourceJobId", () => {
     const id1 = tracker.addJob(db, sample);
     const id2 = tracker.addJob(db, sample);
     expect(id1).toBe(id2);
   });
 
-  it("getJobByLinkedinId returns the row", () => {
+  it("getJobBySource returns the row", () => {
     tracker.addJob(db, sample);
-    const row = tracker.getJobByLinkedinId(db, "123");
+    const row = tracker.getJobBySource(db, "linkedin", "123");
     expect(row?.company).toBe("Acme");
     expect(row?.apply_type).toBe("easy_apply");
   });

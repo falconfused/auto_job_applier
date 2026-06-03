@@ -1,8 +1,16 @@
 import AnthropicBedrock from "@anthropic-ai/bedrock-sdk";
 
+// Inherited AWS_PROFILE (often set in shell rc) takes precedence over explicit
+// AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY in the SDK credential chain. For this
+// project we always want the static creds from .env to win, so drop AWS_PROFILE
+// at module load — before the SDK reads env.
+if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_PROFILE) {
+  delete process.env.AWS_PROFILE;
+}
+
 export type CompleteJson = (system: string, user: string, opts?: { model?: string }) => Promise<any>;
 
-const DEFAULT_MODEL = process.env.BEDROCK_MODEL_ID ?? "us.anthropic.claude-sonnet-4-6-v1:0";
+const DEFAULT_MODEL = process.env.BEDROCK_MODEL_ID ?? "us.anthropic.claude-sonnet-4-6";
 
 let client: AnthropicBedrock | null = null;
 function getClient(): AnthropicBedrock {
@@ -29,7 +37,7 @@ export const completeJson: CompleteJson = async (system, user, opts) => {
   const model = opts?.model ?? DEFAULT_MODEL;
   const resp = await getClient().messages.create({
     model,
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: `${system}\nRespond with ONLY valid JSON, no prose.`,
     messages: [{ role: "user", content: user }],
   });
